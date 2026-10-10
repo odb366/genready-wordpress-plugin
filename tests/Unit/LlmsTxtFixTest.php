@@ -214,6 +214,7 @@ class LlmsTxtFixTest extends TestCase {
 		$this->files->writable = false;
 		$r = $this->fixFor( '/' )->apply( $this->preview( "# Example\n", null ), true );
 		$this->assertArrayHasKey( 'error', $r );
+		$this->assertSame( 'CANNOT_WRITE', $r['code'] );
 		$this->assertSame( array(), $this->store->get( 'llms' ) );
 	}
 

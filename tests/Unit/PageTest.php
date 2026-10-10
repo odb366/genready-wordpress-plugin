@@ -73,7 +73,7 @@ class PageTest extends TestCase {
 		return new Page(
 			$this->store,
 			new Reports( $this->store, $client ),
-			new FixCards( $fixes, new RobotsFix( $fixes, $files, $client, $caches, 'd1' ), new LlmsTxtFix( $fixes, $files, $client, $caches, $seo, 'd1' ), new JsonLdFix( $fixes, $client, $caches, $seo, 'd1' ) )
+			new FixCards( $fixes, new RobotsFix( $fixes, $files, $client, $caches, 'd1' ), new LlmsTxtFix( $fixes, $files, $client, $caches, $seo, 'd1' ), new JsonLdFix( $fixes, $client, $caches, $seo, 'd1' ), $files )
 		);
 	}
 

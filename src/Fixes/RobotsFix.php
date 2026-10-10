@@ -374,11 +374,14 @@ class RobotsFix {
 	 * the first original (the file before GenReady) is kept.
 	 *
 	 * @param array $preview Checked preview.
-	 * @return array array( 'ok' => true ) or array( 'error' => string ).
+	 * @return array array( 'ok' => true ) or array( 'error' => string, 'code' => CANNOT_WRITE|WRITE_FAILED ).
 	 */
 	private function apply_file( array $preview ): array {
 		if ( ! $this->files->can_write( self::FILE ) ) {
-			return array( 'error' => __( "WordPress cannot write robots.txt on this server. Download the file and upload it to your site's root folder.", 'genready' ) );
+			return array(
+				'error' => __( "WordPress cannot write robots.txt on this server. Download the file and upload it to your site's root folder.", 'genready' ),
+				'code'  => 'CANNOT_WRITE',
+			);
 		}
 		$previous = $this->store->get( self::KIND );
 		$current  = $this->files->read( self::FILE );
@@ -416,7 +419,10 @@ class RobotsFix {
 		} else {
 			$this->store->replace( self::KIND, $previous );
 		}
-		return array( 'error' => __( "WordPress could not write robots.txt correctly. Check the file on your server, then download the new file and upload it to your site's root folder.", 'genready' ) );
+		return array(
+			'error' => __( "WordPress could not write robots.txt correctly. Check the file on your server, then download the new file and upload it to your site's root folder.", 'genready' ),
+			'code'  => 'WRITE_FAILED',
+		);
 	}
 
 	/**

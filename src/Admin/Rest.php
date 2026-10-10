@@ -154,6 +154,7 @@ final class Rest {
 		$this->route( '/report', 'GET', 'report' );
 		$this->route( '/verification-tag/remove', 'POST', 'remove_tag' );
 		$this->route( '/notice/dismiss', 'POST', 'dismiss_notice' );
+		$this->route( '/fixes/(?P<kind>robots|llms)/download', 'POST', 'download' );
 		$this->route(
 			'/fixes/(?P<kind>robots|llms|jsonld)/(?P<action>preview|apply|undo|live-check)',
 			'POST',
@@ -195,7 +196,7 @@ final class Rest {
 		$key    = $request->get_param( 'key' );
 		$result = $this->api_key->connect( is_string( $key ) ? $key : '' );
 		if ( isset( $result['error'] ) ) {
-			return $this->error( (string) $result['error'] );
+			return $this->failure( $result );
 		}
 		$this->reports->forget_account();
 		return array( 'ok' => true );
@@ -229,7 +230,7 @@ final class Rest {
 		}
 		$result = $this->setup->verify();
 		if ( isset( $result['error'] ) ) {
-			return $this->error( (string) $result['error'] );
+			return $this->failure( $result );
 		}
 		$this->reports->forget_account();
 		return array(
@@ -250,7 +251,7 @@ final class Rest {
 		}
 		$result = $this->setup->scan();
 		if ( isset( $result['error'] ) ) {
-			return $this->error( (string) $result['error'] );
+			return $this->failure( $result );
 		}
 		return array( 'report_id' => (string) $result['report_id'] );
 	}
@@ -293,6 +294,29 @@ final class Rest {
 	public function dismiss_notice( $request ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- REST callback signature.
 		update_user_meta( get_current_user_id(), self::NOTICE_DISMISSED, 1 );
 		return array( 'ok' => true );
+	}
+
+	/**
+	 * The file of this user's stored preview, for a site where WordPress
+	 * cannot write it. It reads the transient only and makes no call.
+	 *
+	 * @param \WP_REST_Request $request Request with the kind from the route.
+	 * @return array|\WP_Error array( 'filename' => string, 'content' => string ).
+	 */
+	public function download( $request ) {
+		$kind = (string) $request->get_param( 'kind' );
+		if ( ! in_array( $kind, array( 'robots', 'llms' ), true ) ) {
+			return $this->error( __( 'GenReady could not do this. Try again.', 'genready' ) );
+		}
+		$preview = get_transient( $this->preview_key( $kind ) );
+		$content = is_array( $preview ) ? ( $preview['content'] ?? null ) : null;
+		if ( ! is_string( $content ) || '' === $content ) {
+			return $this->error( __( 'The preview expired. Preview again.', 'genready' ), 'PREVIEW_EXPIRED' );
+		}
+		return array(
+			'filename' => 'robots' === $kind ? 'robots.txt' : 'llms.txt',
+			'content'  => $content,
+		);
 	}
 
 	/**
@@ -397,7 +421,7 @@ final class Rest {
 			return $this->api_error( $result );
 		}
 		if ( isset( $result['error'] ) ) {
-			return $this->error( (string) $result['error'] );
+			return $this->failure( $result );
 		}
 		set_transient( $this->preview_key( $kind ), $result, self::PREVIEW_TTL );
 		return $this->display( $kind, $result );
@@ -428,7 +452,7 @@ final class Rest {
 			$result = isset( $preview['error'] ) ? $preview : $this->cards->jsonld()->apply( $preview );
 		}
 		if ( isset( $result['error'] ) ) {
-			return $this->error( (string) $result['error'] );
+			return $this->failure( $result );
 		}
 		delete_transient( $key );
 		return $this->done( $kind );
@@ -449,7 +473,7 @@ final class Rest {
 			$result = $this->cards->jsonld()->undo( $this->target( $kind ) );
 		}
 		if ( isset( $result['error'] ) ) {
-			return $this->error( (string) $result['error'] );
+			return $this->failure( $result );
 		}
 		return $this->done( $kind );
 	}
@@ -595,13 +619,33 @@ final class Rest {
 	 * @param ApiError $error The failure.
 	 */
 	private function api_error( ApiError $error ): \WP_Error {
-		$status = 400;
-		if ( in_array( $error->code, self::PLAN_CODES, true ) ) {
-			$status = 402;
-		} elseif ( 429 === $error->status ) {
-			$status = 429;
+		return $this->error( $error->user_message(), $error->code, self::status_for( $error->code, $error->status ) );
+	}
+
+	/**
+	 * A refusal array from a unit as a REST error. SiteSetup and the file
+	 * writes add 'code' (and SiteSetup 'status') so the script can show the
+	 * next step.
+	 *
+	 * @param array $result array( 'error' => string, 'code'? => string, 'status'? => int|null ).
+	 */
+	private function failure( array $result ): \WP_Error {
+		$code = is_string( $result['code'] ?? null ) && '' !== $result['code'] ? $result['code'] : 'GENREADY_ERROR';
+		return $this->error( (string) $result['error'], $code, self::status_for( $code, $result['status'] ?? null ) );
+	}
+
+	/**
+	 * The REST status for an error: 402 when the plan does not include the
+	 * action, 429 when GenReady is busy, else 400.
+	 *
+	 * @param string   $code   Error code.
+	 * @param int|null $status HTTP status from GenReady, if any.
+	 */
+	private static function status_for( string $code, $status ): int {
+		if ( in_array( $code, self::PLAN_CODES, true ) ) {
+			return 402;
 		}
-		return $this->error( $error->user_message(), $error->code, $status );
+		return 429 === $status ? 429 : 400;
 	}
 
 	/**

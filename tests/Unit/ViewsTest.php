@@ -139,6 +139,7 @@ class ViewsTest extends TestCase {
 		$this->assertStringContainsString( 'id="genready-llms"', $html );
 		$this->assertStringContainsString( 'id="genready-jsonld"', $html );
 		$this->assertStringContainsString( 'role="status"', $html );
+		$this->assertSame( 2, substr_count( $html, 'data-genready-action="download">' ), 'robots and llms offer the download when WordPress cannot write; JSON-LD has none' );
 	}
 
 	public function test_connection_view_escapes_account_text(): void {

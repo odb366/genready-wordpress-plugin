@@ -83,7 +83,7 @@ class SiteSetupTest extends TestCase {
 	public function test_verify_maps_api_errors(): void {
 		$this->connect();
 		$this->client->request_result = new ApiError( 409, 'VERIFIED_ELSEWHERE', '' );
-		$this->assertSame( array( 'error' => 'This site is connected to another GenReady account.' ), $this->setup_object()->verify() );
+		$this->assertSame( array( 'error' => 'This site is connected to another GenReady account.', 'code' => 'VERIFIED_ELSEWHERE', 'status' => 409 ), $this->setup_object()->verify() );
 	}
 
 	public function test_verify_fetches_missing_token_first(): void {
@@ -119,7 +119,7 @@ class SiteSetupTest extends TestCase {
 	public function test_scan_maps_credits_exhausted(): void {
 		$this->connect();
 		$this->client->request_result = new ApiError( 402, 'CREDITS_EXHAUSTED', '' );
-		$this->assertSame( array( 'error' => 'Your GenReady plan has no scans left for now.' ), $this->setup_object()->scan() );
+		$this->assertSame( array( 'error' => 'Your GenReady plan has no scans left for now.', 'code' => 'CREDITS_EXHAUSTED', 'status' => 402 ), $this->setup_object()->scan() );
 		$this->assertArrayNotHasKey( 'genready_settings', $this->options );
 	}
 }

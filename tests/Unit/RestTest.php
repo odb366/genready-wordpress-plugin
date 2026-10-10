@@ -105,7 +105,7 @@ class RestTest extends TestCase {
 			$meta,
 			$this->caches,
 			new Reports( $this->store, $this->client ),
-			new FixCards( $this->fixes, $robots, $llms, $jsonld )
+			new FixCards( $this->fixes, $robots, $llms, $jsonld, $this->files )
 		);
 	}
 
@@ -170,11 +170,81 @@ class RestTest extends TestCase {
 		$routes = array();
 		Monkey\Functions\when( 'register_rest_route' )->alias( function ( $ns, $path ) use ( &$routes ) { $routes[] = $path; } );
 		$this->rest()->register();
-		$pattern = '#^' . current( preg_grep( '#^/fixes/#', $routes ) ) . '$#';
+		$pattern = '#^' . current( preg_grep( '#^/fixes/.*<action>#', $routes ) ) . '$#';
 		$this->assertSame( 1, preg_match( $pattern, '/fixes/robots/preview' ) );
 		$this->assertSame( 1, preg_match( $pattern, '/fixes/llms/live-check' ) );
 		$this->assertSame( 0, preg_match( $pattern, '/fixes/../preview' ) );
 		$this->assertSame( 0, preg_match( $pattern, '/fixes/robots/delete' ) );
+	}
+
+	public function test_download_route_accepts_only_robots_and_llms(): void {
+		$routes = array();
+		Monkey\Functions\when( 'register_rest_route' )->alias( function ( $ns, $path ) use ( &$routes ) { $routes[] = $path; } );
+		$this->rest()->register();
+		$pattern = '#^' . current( preg_grep( '#/download$#', $routes ) ) . '$#';
+		$this->assertSame( 1, preg_match( $pattern, '/fixes/robots/download' ) );
+		$this->assertSame( 1, preg_match( $pattern, '/fixes/llms/download' ) );
+		$this->assertSame( 0, preg_match( $pattern, '/fixes/jsonld/download' ) );
+		$this->assertSame( 0, preg_match( $pattern, '/fixes/../download' ) );
+	}
+
+	public function test_download_returns_the_stored_preview_content(): void {
+		$this->transients['genready_preview_robots_7'] = array( 'content' => "User-agent: GPTBot\nAllow: /\n", 'base_sha256' => str_repeat( 'a', 64 ) );
+		$result = $this->rest()->download( new FakeRequest( array( 'kind' => 'robots', 'content' => 'evil' ) ) );
+		$this->assertSame(
+			array(
+				'filename' => 'robots.txt',
+				'content'  => "User-agent: GPTBot\nAllow: /\n",
+			),
+			$result
+		);
+		$this->assertArrayHasKey( 'genready_preview_robots_7', $this->transients, 'the preview stays for apply' );
+		$this->assertSame( array(), $this->client->requests );
+	}
+
+	public function test_download_without_a_preview_says_it_expired(): void {
+		$this->assert_error( $this->rest()->download( new FakeRequest( array( 'kind' => 'llms' ) ) ), 'The preview expired. Preview again.' );
+		$this->assertInstanceOf( \WP_Error::class, $this->rest()->download( new FakeRequest( array( 'kind' => 'jsonld' ) ) ) );
+	}
+
+	public function test_apply_write_refusal_keeps_its_code_and_the_preview(): void {
+		$this->connect();
+		$this->files->put( 'robots.txt', self::BASE );
+		$this->client->request_result = $this->robots_merge( self::BASE . "User-agent: GPTBot\nAllow: /\n" );
+		$rest = $this->rest();
+		$this->fix( $rest, 'robots', 'preview' );
+		$this->files->writable = false;
+		$result                = $this->fix( $rest, 'robots', 'apply' );
+		$this->assertInstanceOf( \WP_Error::class, $result );
+		$this->assertSame( 'CANNOT_WRITE', $result->get_error_data()['genready_code'] );
+		$this->assertSame( 400, $result->get_error_data()['status'] );
+		$this->assertArrayHasKey( 'genready_preview_robots_7', $this->transients, 'the admin can still download it' );
+	}
+
+	public function test_credits_exhausted_scan_returns_402(): void {
+		$this->connect();
+		$this->client->request_result = new ApiError( 402, 'CREDITS_EXHAUSTED', '' );
+		$result                       = $this->rest()->scan( new FakeRequest() );
+		$this->assert_error( $result, 'Your GenReady plan has no scans left for now.', 402 );
+		$this->assertSame( 'CREDITS_EXHAUSTED', $result->get_error_data()['genready_code'] );
+	}
+
+	public function test_verify_rate_limit_returns_429(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1', 'verification_token' => 'tok12345678' ) );
+		Monkey\Functions\when( 'update_option' )->justReturn( true );
+		$this->client->request_result = new ApiError( 429, 'RATE_LIMITED', '' );
+		$result                       = $this->rest()->verify( new FakeRequest() );
+		$this->assertInstanceOf( \WP_Error::class, $result );
+		$this->assertSame( 429, $result->get_error_data()['status'] );
+		$this->assertSame( 'RATE_LIMITED', $result->get_error_data()['genready_code'] );
+	}
+
+	public function test_agent_standard_not_found_is_a_warning(): void {
+		$report = Reports::summarize( report_fixture() );
+		$this->assertSame( 'warn', $report['sections']['agents'][0]['verdict'] );
+		$fixture = report_fixture();
+		$fixture['scores']['agentReadiness']['standards']['webmcp']['status'] = 'detected';
+		$this->assertSame( 'pass', Reports::summarize( $fixture )['sections']['agents'][0]['verdict'] );
 	}
 
 	public function test_apply_uses_the_stored_preview_not_the_request_body(): void {
@@ -415,7 +485,7 @@ class RestTest extends TestCase {
 	 * @dataProvider live_states
 	 */
 	public function test_live_state_texts( string $kind, string $mode, array $live, string $state ): void {
-		$cards = new FixCards( $this->fixes, new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, 'd1' ), new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, new SeoPlugins( $this->files ), 'd1' ), new JsonLdFix( $this->fixes, $this->client, $this->caches, new SeoPlugins( $this->files ), 'd1' ) );
+		$cards = new FixCards( $this->fixes, new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, 'd1' ), new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, new SeoPlugins( $this->files ), 'd1' ), new JsonLdFix( $this->fixes, $this->client, $this->caches, new SeoPlugins( $this->files ), 'd1' ), $this->files );
 		$this->assertSame( $state, $cards->live_state( $kind, array( 'mode' => $mode, 'live' => $live ) )['state'] );
 	}
 

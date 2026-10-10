@@ -276,8 +276,9 @@ class Reports {
 			if ( ! is_array( $standard ) ) {
 				continue;
 			}
-			$status               = $standard['status'] ?? '';
-			$verdict              = 'detected' === $status ? 'pass' : ( 'not_detected' === $status ? 'fail' : 'warn' );
+			$status = $standard['status'] ?? '';
+			// A standard adds bonus points, so a missing one is a warning, not a failure.
+			$verdict              = 'detected' === $status ? 'pass' : 'warn';
 			$sections['agents'][] = self::check(
 				is_string( $standard['name'] ?? null ) ? $standard['name'] : (string) $key,
 				$verdict,

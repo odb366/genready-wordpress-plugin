@@ -149,6 +149,7 @@ class RobotsFixTest extends TestCase {
 		$this->files->writable = false;
 		$r = $this->fix()->apply( $this->preview( 'NEW', 'ORIGINAL' ) );
 		$this->assertStringContainsString( 'Download', $r['error'] );
+		$this->assertSame( 'CANNOT_WRITE', $r['code'] );
 		$this->assertSame( 'ORIGINAL', $this->files->read( 'robots.txt' ) );
 	}
 
@@ -416,6 +417,7 @@ class RobotsFixTest extends TestCase {
 		$this->files->broken_writes = true;
 		$r = $this->fix()->apply( $this->preview( 'NEW', 'ORIGINAL' ) );
 		$this->assertArrayHasKey( 'error', $r );
+		$this->assertSame( 'WRITE_FAILED', $r['code'] );
 		$this->assertSame( 'ORIGINAL', $this->files->read( 'robots.txt' ) );
 		$this->assertSame( array(), $this->store->get( 'robots' ) );
 	}

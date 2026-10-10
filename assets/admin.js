@@ -24,6 +24,8 @@
 	var POLL_MS = 5000;
 	var POLL_LIMIT_MS = 180000;
 	var PLAN_CODES = [ 'PLAN_REQUIRED', 'DOMAIN_LIMIT_REACHED', 'CREDITS_EXHAUSTED' ];
+	var WRITE_CODES = [ 'CANNOT_WRITE', 'WRITE_FAILED' ];
+	var FILE_NAMES = { robots: 'robots.txt', llms: 'llms.txt' };
 	var FIELD_LABELS = {
 		headline: __( 'Headline', 'genready' ),
 		name: __( 'Name', 'genready' ),
@@ -163,6 +165,27 @@
 				} );
 			} );
 		} );
+	}
+
+	/**
+	 * Save text as a file through a temporary download link.
+	 *
+	 * @param {string} name    File name.
+	 * @param {string} content File content.
+	 */
+	function saveFile( name, content ) {
+		var blob = new window.Blob( [ content ], { type: 'text/plain;charset=utf-8' } );
+		var url = window.URL.createObjectURL( blob );
+		var link = document.createElement( 'a' );
+		link.href = url;
+		link.download = name;
+		link.hidden = true;
+		document.body.appendChild( link );
+		link.click();
+		link.remove();
+		window.setTimeout( function () {
+			window.URL.revokeObjectURL( url );
+		}, 0 );
 	}
 
 	/* ---------- Verify, scan and poll ---------- */
@@ -482,6 +505,10 @@
 		if ( check ) {
 			check.hidden = ! info.live_check;
 		}
+		var download = cardAction( card, 'download' );
+		if ( download ) {
+			download.hidden = info.can_write !== false;
+		}
 		var asFile = cardAction( card, 'as-file' );
 		if ( asFile ) {
 			asFile.hidden = ! ( liveInfo && liveInfo.state === 'no_route' );
@@ -536,6 +563,24 @@
 				apply.hidden = true;
 				field( card, 'preview' ).hidden = true;
 				say( result, kind === 'jsonld' ? __( 'Applied.', 'genready' ) : __( 'Applied. Check the live file in a minute.', 'genready' ), 'success' );
+			} catch ( error ) {
+				var download = cardAction( card, 'download' );
+				if ( download && WRITE_CODES.indexOf( errorCode( error ) ) !== -1 ) {
+					download.hidden = false;
+				}
+				showError( result, error );
+			}
+		} );
+
+		onAction( card, 'download', async function () {
+			try {
+				var file = await call( 'POST', path + 'download' );
+				if ( ! file || typeof file.content !== 'string' ) {
+					say( result, __( 'GenReady could not do this. Try again.', 'genready' ), 'error' );
+					return;
+				}
+				saveFile( FILE_NAMES[ kind ], file.content );
+				say( result, __( "The file is downloaded. Upload it to your site's root folder.", 'genready' ), 'success' );
 			} catch ( error ) {
 				showError( result, error );
 			}

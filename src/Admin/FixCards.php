@@ -7,6 +7,7 @@
 
 namespace GenReady\Admin;
 
+use GenReady\Fixes\FileWriter;
 use GenReady\Fixes\FixStore;
 use GenReady\Fixes\JsonLdFix;
 use GenReady\Fixes\LlmsTxtFix;
@@ -49,18 +50,27 @@ class FixCards {
 	private $jsonld;
 
 	/**
+	 * Files in the site root.
+	 *
+	 * @var FileWriter
+	 */
+	private $files;
+
+	/**
 	 * Build the cards.
 	 *
 	 * @param FixStore   $store  Fix storage.
 	 * @param RobotsFix  $robots The robots.txt fix.
 	 * @param LlmsTxtFix $llms   The llms.txt fix.
 	 * @param JsonLdFix  $jsonld The JSON-LD fix.
+	 * @param FileWriter $files  Files in the site root, to tell whether WordPress can write them.
 	 */
-	public function __construct( FixStore $store, RobotsFix $robots, LlmsTxtFix $llms, JsonLdFix $jsonld ) {
+	public function __construct( FixStore $store, RobotsFix $robots, LlmsTxtFix $llms, JsonLdFix $jsonld, FileWriter $files ) {
 		$this->store  = $store;
 		$this->robots = $robots;
 		$this->llms   = $llms;
 		$this->jsonld = $jsonld;
+		$this->files  = $files;
 	}
 
 	/**
@@ -133,7 +143,8 @@ class FixCards {
 	 *
 	 * @param string $kind          'robots', 'llms' or 'jsonld'.
 	 * @param array  $jsonld_target Target of the JSON-LD fix.
-	 * @return array kind, title, state, state_text, message, blocked, applied, versions, live, live_check, mode, tagline.
+	 * @return array kind, title, state, state_text, message, blocked, applied, versions, live, live_check, mode,
+	 *               tagline and can_write (false in file mode when WordPress cannot write the file).
 	 */
 	public function card( string $kind, array $jsonld_target = array() ): array {
 		if ( 'jsonld' === $kind ) {
@@ -158,6 +169,7 @@ class FixCards {
 			'live_check' => $applied,
 			'mode'       => $mode,
 			'tagline'    => 'llms' === $kind ? wp_strip_all_tags( (string) get_bloginfo( 'description' ) ) : '',
+			'can_write'  => 'file' !== $mode || $this->files->can_write( 'robots' === $kind ? RobotsFix::FILE : LlmsTxtFix::FILE ),
 		);
 		if ( $applied && 'needs_review' === ( $record['status'] ?? '' ) ) {
 			$card['state']      = 'needs_review';
@@ -242,6 +254,7 @@ class FixCards {
 			'live_check' => false,
 			'mode'       => '',
 			'tagline'    => '',
+			'can_write'  => true,
 		);
 	}
 

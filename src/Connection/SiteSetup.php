@@ -67,7 +67,8 @@ final class SiteSetup {
 	 * Show the meta tag, clear page caches for the home page, and ask GenReady
 	 * to check the tag.
 	 *
-	 * @return array array( 'verified' => bool, 'detail' => string ) or array( 'error' => string ).
+	 * @return array array( 'verified' => bool, 'detail' => string ) or array( 'error' => string ). An error from the API
+	 *               also has 'code' and 'status'.
 	 */
 	public function verify(): array {
 		$connection = $this->store->load();
@@ -86,7 +87,7 @@ final class SiteSetup {
 		$this->caches->purge_url( home_url( '/' ) );
 		$result = $this->client->request( 'POST', '/api/v1/domains/' . rawurlencode( $domain_id ) . '/verify', array( 'method' => 'meta' ) );
 		if ( $result instanceof ApiError ) {
-			return array( 'error' => $result->user_message() );
+			return self::failure( $result );
 		}
 		return array(
 			'verified' => true === ( $result['verified'] ?? false ),
@@ -97,7 +98,8 @@ final class SiteSetup {
 	/**
 	 * Start a full scan of the home page and remember the report.
 	 *
-	 * @return array array( 'report_id' => string, 'estimated_seconds' => int ) or array( 'error' => string ).
+	 * @return array array( 'report_id' => string, 'estimated_seconds' => int ) or array( 'error' => string ). An
+	 *               error from the API also has 'code' and 'status'.
 	 */
 	public function scan(): array {
 		$result = $this->client->request(
@@ -109,7 +111,7 @@ final class SiteSetup {
 			)
 		);
 		if ( $result instanceof ApiError ) {
-			return array( 'error' => $result->user_message() );
+			return self::failure( $result );
 		}
 		$report_id = $result['reportId'] ?? null;
 		if ( ! is_string( $report_id ) || 1 !== preg_match( '/^[A-Za-z0-9-]{1,64}$/', $report_id ) ) {
@@ -136,7 +138,7 @@ final class SiteSetup {
 	private function fetch_token( array $connection ) {
 		$result = $this->client->request( 'POST', '/api/v1/domains', array( 'hostname' => Site::hostname() ) );
 		if ( $result instanceof ApiError ) {
-			return array( 'error' => $result->user_message() );
+			return self::failure( $result );
 		}
 		$domain = is_array( $result['domain'] ?? null ) ? $result['domain'] : array();
 		$token  = $domain['verificationToken'] ?? null;
@@ -145,5 +147,20 @@ final class SiteSetup {
 		}
 		$this->store->save( array_merge( $connection, array( 'verification_token' => $token ) ) );
 		return $token;
+	}
+
+	/**
+	 * A failed API call as an error array. The code and status let the admin
+	 * page show the next step, for example the pricing link for a 402.
+	 *
+	 * @param ApiError $error The failure.
+	 * @return array array( 'error' => string, 'code' => string, 'status' => int|null ).
+	 */
+	private static function failure( ApiError $error ): array {
+		return array(
+			'error'  => $error->user_message(),
+			'code'   => $error->code,
+			'status' => $error->status,
+		);
 	}
 }
