@@ -16,6 +16,12 @@ class MemoryFiles extends FileWriter {
 	public $writes = 0;
 	/** @var bool When true, files exist but cannot be read. */
 	public $unreadable = false;
+	/** @var bool */
+	public $root = true;
+
+	public function root_known(): bool {
+		return $this->root;
+	}
 
 	public function put( string $name, string $content ): void {
 		$this->files[ $name ] = $content;
@@ -50,6 +56,16 @@ class MemoryFiles extends FileWriter {
 	public function delete( string $name ): bool {
 		unset( $this->files[ $name ] );
 		return true;
+	}
+}
+
+/** The real FileWriter with ABSPATH in a temp folder. */
+class TempFileWriter extends FileWriter {
+	/** @var string */
+	public $abspath = '';
+
+	protected function abspath(): string {
+		return $this->abspath;
 	}
 }
 

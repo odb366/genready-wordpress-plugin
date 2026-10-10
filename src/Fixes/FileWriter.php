@@ -10,13 +10,21 @@ namespace GenReady\Fixes;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Reads and writes the few files GenReady may change, and only in the folder
- * that holds WordPress's home (get_home_path()). It writes only through the
- * direct filesystem method, and checks every write by reading it back.
+ * Reads and writes the few files GenReady may change, and only in the site's
+ * root folder (where the front index.php lives). It writes only through the
+ * direct filesystem method, and checks every write by reading it back. When
+ * the root folder cannot be found, it reads and writes nothing.
  */
 class FileWriter {
 	/** The only file names this class touches. */
 	const ALLOWED = array( 'robots.txt', 'llms.txt' );
+
+	/**
+	 * Tell whether the site's root folder was found.
+	 */
+	public function root_known(): bool {
+		return null !== $this->dir();
+	}
 
 	/**
 	 * Tell whether the file exists.
@@ -50,8 +58,11 @@ class FileWriter {
 	 * @param string $name File name from ALLOWED. When it exists, the file must be writable; else the folder.
 	 */
 	public function can_write( string $name = '' ): bool {
-		$this->load_admin_functions();
 		$dir = $this->dir();
+		if ( null === $dir ) {
+			return false;
+		}
+		$this->load_admin_functions();
 		if ( 'direct' !== get_filesystem_method( array(), $dir ) ) {
 			return false;
 		}
@@ -117,15 +128,67 @@ class FileWriter {
 		if ( basename( $name ) !== $name || ! in_array( $name, self::ALLOWED, true ) ) {
 			return null;
 		}
-		return $this->dir() . $name;
+		$dir = $this->dir();
+		return null === $dir ? null : $dir . $name;
 	}
 
 	/**
-	 * The folder that holds WordPress's home, with a trailing slash.
+	 * The site's root folder, with a trailing slash, or null when it cannot be found.
+	 *
+	 * Outside wp-admin, get_home_path() reads SCRIPT_FILENAME. When WordPress has
+	 * its own folder, it can then return '/', so its answer is checked first.
 	 */
-	private function dir(): string {
+	private function dir(): ?string {
+		$abspath = trailingslashit( wp_normalize_path( $this->abspath() ) );
+		$home    = rtrim( (string) wp_parse_url( home_url(), PHP_URL_PATH ), '/' );
+		$site    = rtrim( (string) wp_parse_url( site_url(), PHP_URL_PATH ), '/' );
+		if ( $home === $site ) {
+			return $abspath;
+		}
 		$this->load_admin_functions();
-		return trailingslashit( (string) get_home_path() );
+		$root = $this->checked_root( get_home_path(), $abspath );
+		if ( null !== $root ) {
+			return $root;
+		}
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- a server path, only passed to realpath() and compared, never printed or stored.
+		$script = isset( $_SERVER['SCRIPT_FILENAME'] ) ? wp_unslash( $_SERVER['SCRIPT_FILENAME'] ) : '';
+		if ( is_string( $script ) && 'index.php' === basename( $script ) ) {
+			$real = realpath( $script );
+			return false === $real ? null : $this->checked_root( dirname( $real ), $abspath );
+		}
+		return null;
+	}
+
+	/**
+	 * Accept a folder as the root only when it holds index.php, is not the
+	 * filesystem root, and is ABSPATH or a parent of it.
+	 *
+	 * @param mixed  $dir     Candidate folder.
+	 * @param string $abspath ABSPATH, normalized, with a trailing slash.
+	 * @return string|null The real folder with a trailing slash, or null.
+	 */
+	private function checked_root( $dir, string $abspath ): ?string {
+		if ( ! is_string( $dir ) || '' === $dir ) {
+			return null;
+		}
+		$real      = realpath( $dir );
+		$real_base = realpath( $abspath );
+		if ( false === $real || false === $real_base || dirname( $real ) === $real ) {
+			return null;
+		}
+		$root = trailingslashit( wp_normalize_path( $real ) );
+		$base = trailingslashit( wp_normalize_path( $real_base ) );
+		if ( 0 !== strpos( $base, $root ) || ! is_file( $root . 'index.php' ) ) {
+			return null;
+		}
+		return $root;
+	}
+
+	/**
+	 * The WordPress folder. A method, so tests can use a temp folder.
+	 */
+	protected function abspath(): string {
+		return ABSPATH;
 	}
 
 	/**
@@ -134,8 +197,11 @@ class FileWriter {
 	 * @return object|null WP_Filesystem_Direct, or null.
 	 */
 	private function filesystem() {
-		$this->load_admin_functions();
 		$dir = $this->dir();
+		if ( null === $dir ) {
+			return null;
+		}
+		$this->load_admin_functions();
 		if ( 'direct' !== get_filesystem_method( array(), $dir ) || ! WP_Filesystem( false, $dir ) ) {
 			return null;
 		}

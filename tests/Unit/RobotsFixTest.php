@@ -551,4 +551,107 @@ class RobotsFixTest extends TestCase {
 		}
 		$this->assertSame( array(), $errors );
 	}
+
+	// Fix round 1.
+
+	/** RobotsFix whose Content-Type guard writes to a log. */
+	private function logging_fix( array &$log ): RobotsFix {
+		$fix      = new class( $this->store, $this->files, $this->client, $this->caches, 'd1' ) extends RobotsFix {
+			/** @var array */
+			public $log = array();
+			protected function remember_content_type(): void {
+				$this->log[] = 'remember';
+			}
+			protected function restore_content_type(): void {
+				$this->log[] = 'restore';
+			}
+		};
+		$fix->log = &$log;
+		return $fix;
+	}
+
+	public function test_base_restores_the_content_type_after_do_robots(): void {
+		$log = array();
+		$fix = $this->logging_fix( $log );
+		Monkey\Functions\when( 'do_robots' )->alias(
+			function () use ( $fix, &$log ) {
+				$log[] = 'do_robots';
+				echo $fix->filter( self::BASE, '1' );
+			}
+		);
+		$this->assertSame( self::BASE, $fix->base() );
+		$this->assertSame( array( 'remember', 'do_robots', 'restore' ), $log );
+	}
+
+	public function test_base_restores_the_content_type_when_do_robots_throws(): void {
+		$log = array();
+		$fix = $this->logging_fix( $log );
+		Monkey\Functions\when( 'do_robots' )->alias(
+			function () use ( &$log ) {
+				$log[] = 'do_robots';
+				throw new \RuntimeException( 'boom' );
+			}
+		);
+		try {
+			$fix->base();
+			$this->fail( 'Expected the exception.' );
+		} catch ( \RuntimeException $e ) {
+			$this->assertSame( 'boom', $e->getMessage() );
+		}
+		$this->assertSame( array( 'remember', 'do_robots', 'restore' ), $log );
+	}
+
+	public function test_file_mode_base_does_not_touch_headers(): void {
+		$log = array();
+		$this->files->put( 'robots.txt', 'FILE' );
+		$this->assertSame( 'FILE', $this->logging_fix( $log )->base() );
+		$this->assertSame( array(), $log );
+	}
+
+	public function test_unknown_root_folder_refuses_without_a_call(): void {
+		$this->files->root = false;
+		$this->files->put( 'robots.txt', 'ORIGINAL' );
+		$fix = $this->fix();
+		$this->assertSame( 'unknown', $fix->mode() );
+		$r = $fix->preview( true );
+		$this->assertStringContainsString( "cannot find this site's root folder", $r['error'] );
+		$this->assertSame( array(), $this->client->requests );
+		foreach ( array( 'file', 'virtual', 'unknown' ) as $mode ) {
+			$r = $fix->apply( $this->preview( 'NEW', 'ORIGINAL', $mode ) );
+			$this->assertStringContainsString( "cannot find this site's root folder", $r['error'] );
+		}
+		$this->assertSame( 0, $this->files->writes );
+		$this->assertSame( array(), $this->store->get( 'robots' ) );
+	}
+
+	public function test_file_undo_refuses_when_the_root_folder_is_unknown(): void {
+		$this->files->put( 'robots.txt', 'WRITTEN' );
+		$this->store->put( 'robots', array( 'mode' => 'file', 'content' => 'WRITTEN', 'written_sha256' => hash( 'sha256', 'WRITTEN' ), 'original' => 'ORIGINAL' ) );
+		$this->files->root = false;
+		$r = $this->fix()->undo();
+		$this->assertStringContainsString( "cannot find this site's root folder", $r['error'] );
+		$this->assertSame( 'WRITTEN', $this->files->read( 'robots.txt' ) );
+		$this->assertSame( 'file', $this->store->get( 'robots' )['mode'] );
+	}
+
+	public function test_filter_serves_on_an_unknown_root(): void {
+		$this->files->root = false;
+		$this->store->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', self::BASE ) ) );
+		$this->assertSame( 'NEW', $this->fix()->filter( self::BASE, '1' ) );
+	}
+
+	public function test_status_returns_to_applied_when_the_base_comes_back(): void {
+		$this->store->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', self::BASE ), 'status' => 'applied' ) );
+		$writes = 0;
+		$opts   = &$this->options;
+		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v ) use ( &$opts, &$writes ) { $opts[ $k ] = $v; ++$writes; return true; } );
+		$fix = $this->fix();
+		$this->assertSame( 'changed', $fix->filter( 'changed', '1' ) );
+		$this->assertSame( 'needs_review', $this->store->get( 'robots' )['status'] );
+		$this->assertSame( 'NEW', $fix->filter( self::BASE, '1' ) );
+		$this->assertSame( 'applied', $this->store->get( 'robots' )['status'] );
+		$this->assertSame( 'NEW', $fix->filter( self::BASE, '1' ) );
+		$this->assertSame( 2, $writes );
+		$this->assertSame( array(), $this->store->get( 'robots' )['versions'] );
+	}
 }

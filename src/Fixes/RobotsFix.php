@@ -18,9 +18,10 @@ defined( 'ABSPATH' ) || exit;
  * merged and checked. The server refuses any merge that changes access for a
  * crawler that is not an AI crawler. The plugin serves a stored file only for
  * the exact base the server checked, so crawlers never get a mix nobody
- * checked. The front-end filter uses local data only and fails safe.
+ * checked. The front-end filter uses local data only and fails safe. The
+ * class is not final so a test can observe the Content-Type guard of base().
  */
-final class RobotsFix {
+class RobotsFix {
 	/** Fix kind in the store. */
 	const KIND = 'robots';
 	/** File name in the site root. */
@@ -72,6 +73,12 @@ final class RobotsFix {
 	 * @var string
 	 */
 	private $captured = '';
+	/**
+	 * Content-Type header line sent before base() ran do_robots(), or null.
+	 *
+	 * @var string|null
+	 */
+	private $content_type = null;
 
 	/**
 	 * Build the fix.
@@ -95,7 +102,8 @@ final class RobotsFix {
 	 * How this site serves robots.txt.
 	 *
 	 * @return string 'hidden' (search engines asked not to index), 'subdir' (WordPress is not at the
-	 *                root of the host), 'file' (a physical robots.txt) or 'virtual' (made by WordPress).
+	 *                root of the host), 'unknown' (the root folder cannot be found), 'file' (a physical
+	 *                robots.txt) or 'virtual' (made by WordPress).
 	 */
 	public function mode(): string {
 		$blog_public = get_option( 'blog_public' );
@@ -105,6 +113,9 @@ final class RobotsFix {
 		$path = wp_parse_url( home_url(), PHP_URL_PATH );
 		if ( is_string( $path ) && '' !== $path && '/' !== $path ) {
 			return 'subdir';
+		}
+		if ( ! $this->files->root_known() ) {
+			return 'unknown';
 		}
 		return $this->files->exists( self::FILE ) ? 'file' : 'virtual';
 	}
@@ -121,7 +132,10 @@ final class RobotsFix {
 		if ( ! function_exists( 'do_robots' ) ) {
 			return '';
 		}
-		$level           = ob_get_level();
+		$level = ob_get_level();
+		// do_robots() sends a text/plain Content-Type. In a REST request that would
+		// replace the JSON Content-Type the REST server already sent.
+		$this->remember_content_type();
 		$this->capturing = true;
 		$this->captured  = '';
 		ob_start();
@@ -132,8 +146,35 @@ final class RobotsFix {
 				ob_end_clean();
 			}
 			$this->capturing = false;
+			$this->restore_content_type();
 		}
 		return $this->captured;
+	}
+
+	/**
+	 * Record the Content-Type header that is set now, before do_robots() runs.
+	 */
+	protected function remember_content_type(): void {
+		$this->content_type = null;
+		foreach ( headers_list() as $line ) {
+			if ( 0 === stripos( $line, 'Content-Type:' ) ) {
+				$this->content_type = $line;
+			}
+		}
+	}
+
+	/**
+	 * Put the recorded Content-Type back, or remove the one do_robots() set.
+	 */
+	protected function restore_content_type(): void {
+		if ( headers_sent() ) {
+			return;
+		}
+		if ( null !== $this->content_type ) {
+			header( $this->content_type, true );
+			return;
+		}
+		header_remove( 'Content-Type' );
 	}
 
 	/**
@@ -313,6 +354,11 @@ final class RobotsFix {
 				}
 				return $output;
 			}
+			if ( 'needs_review' === ( $fix['status'] ?? '' ) ) {
+				// The base is back to the one the server checked.
+				$fix['status'] = 'applied';
+				$this->store->put_status( self::KIND, $fix );
+			}
 			if ( ! headers_sent() ) {
 				header( 'Cache-Control: public, max-age=300' );
 			}
@@ -380,6 +426,9 @@ final class RobotsFix {
 	 * @return array array( 'ok' => true ) or array( 'error' => string ).
 	 */
 	private function undo_file( array $fix ): array {
+		if ( ! $this->files->root_known() ) {
+			return array( 'error' => $this->root_unknown() );
+		}
 		if ( ! $this->holds_written( $this->files->read( self::FILE ), $fix ) ) {
 			return array( 'error' => __( 'robots.txt was edited after GenReady changed it, so GenReady did not undo it. Check the file yourself.', 'genready' ) );
 		}
@@ -461,6 +510,9 @@ final class RobotsFix {
 		if ( 'subdir' === $mode ) {
 			return __( 'robots.txt works only at the root of a domain. This site lives in a subfolder, so GenReady cannot change robots.txt from WordPress.', 'genready' );
 		}
+		if ( 'unknown' === $mode ) {
+			return $this->root_unknown();
+		}
 		return null;
 	}
 
@@ -491,6 +543,13 @@ final class RobotsFix {
 	 */
 	private function strings( $values ): array {
 		return is_array( $values ) ? array_values( array_filter( $values, 'is_string' ) ) : array();
+	}
+
+	/**
+	 * Text for a site whose root folder cannot be found.
+	 */
+	private function root_unknown(): string {
+		return __( "GenReady cannot find this site's root folder, so it does not change robots.txt.", 'genready' );
 	}
 
 	/**
