@@ -173,4 +173,31 @@ class ViewsTest extends TestCase {
 		$this->assertStringContainsString( 'https://genready.ai/privacy', $html );
 		$this->assertStringContainsString( 'checked="checked"', $html, 'the email box is on by default' );
 	}
+
+	public function test_fixes_view_hides_the_file_action_when_the_site_may_not_write(): void {
+		$llms = array(
+			'kind'       => 'llms',
+			'title'      => 'llms.txt',
+			'state'      => 'applied',
+			'state_text' => 'Applied',
+			'message'    => '',
+			'blocked'    => false,
+			'applied'    => true,
+			'versions'   => array(),
+			'live'       => array(
+				'state'   => 'no_route',
+				'message' => 'Your server does not pass /llms.txt to WordPress.',
+			),
+			'live_check' => true,
+			'mode'       => 'virtual',
+			'tagline'    => '',
+			'can_write'  => true,
+			'as_file'    => false,
+		);
+		$html = Page::view( 'fixes', array( 'connected' => true, 'cards' => array( $llms ) ) );
+		$this->assertStringContainsString( 'data-genready-action="as-file" hidden>', $html );
+		$llms['as_file'] = true;
+		$html            = Page::view( 'fixes', array( 'connected' => true, 'cards' => array( $llms ) ) );
+		$this->assertStringContainsString( 'data-genready-action="as-file">', $html );
+	}
 }

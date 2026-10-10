@@ -570,4 +570,37 @@ class RestTest extends TestCase {
 		$this->assertSame( array( 'ok' => true ), $this->rest()->dismiss_notice( new FakeRequest() ) );
 		$this->assertSame( 1, $this->user_meta[7]['genready_notice_dismissed'] );
 	}
+
+	// Fix round A.
+
+	private function cards(): FixCards {
+		$seo = new SeoPlugins( $this->files );
+		return new FixCards(
+			$this->fixes,
+			new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, 'd1' ),
+			new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, $seo, 'd1' ),
+			new JsonLdFix( $this->fixes, $this->client, $this->caches, $seo, 'd1' ),
+			$this->files
+		);
+	}
+
+	public function test_sub_site_cards_show_the_network_refusal_and_no_file_action(): void {
+		$this->files->may = false;
+		$this->files->put( 'robots.txt', 'NETWORK FILE' );
+		$this->files->put( 'llms.txt', 'NETWORK FILE' );
+		$cards  = $this->cards();
+		$robots = $cards->card( 'robots' );
+		$llms   = $cards->card( 'llms' );
+		$this->assertSame( 'network', $robots['mode'] );
+		$this->assertTrue( $robots['blocked'] );
+		$this->assertSame( 'On a multisite network, only a network admin on the main site can change robots.txt in the site root.', $robots['message'] );
+		$this->assertTrue( $llms['blocked'] );
+		$this->assertSame( 'On a multisite network, only a network admin on the main site can change llms.txt in the site root.', $llms['message'] );
+		$this->assertFalse( $llms['as_file'] );
+		unset( $this->files->files['llms.txt'] );
+		$this->assertFalse( $cards->card( 'llms' )['as_file'], 'a sub-site never writes llms.txt as a file' );
+		$this->files->may = true;
+		$this->assertTrue( $cards->card( 'llms' )['as_file'] );
+		$this->assertFalse( $cards->card( 'robots' )['as_file'] );
+	}
 }

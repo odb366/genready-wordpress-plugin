@@ -511,7 +511,7 @@
 		}
 		var asFile = cardAction( card, 'as-file' );
 		if ( asFile ) {
-			asFile.hidden = ! ( liveInfo && liveInfo.state === 'no_route' );
+			asFile.hidden = ! ( liveInfo && liveInfo.state === 'no_route' && info.as_file === true );
 		}
 	}
 

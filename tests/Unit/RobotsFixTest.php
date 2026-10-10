@@ -656,4 +656,41 @@ class RobotsFixTest extends TestCase {
 		$this->assertSame( 2, $writes );
 		$this->assertSame( array(), $this->store->get( 'robots' )['versions'] );
 	}
+
+	// Fix round A, G1: multisite file safety.
+
+	public function test_sub_site_with_a_physical_file_is_refused_without_a_write(): void {
+		$this->files->may = false;
+		$this->files->put( 'robots.txt', 'NETWORK FILE' );
+		$fix = $this->fix();
+		$this->assertSame( 'network', $fix->mode() );
+		$text = 'On a multisite network, only a network admin on the main site can change robots.txt in the site root.';
+		$this->assertSame( $text, $fix->mode_refusal( 'network' ) );
+		$this->assertSame( array( 'error' => $text ), $fix->preview( true ) );
+		$this->assertSame( array(), $this->client->requests );
+		foreach ( array( 'file', 'network' ) as $mode ) {
+			$this->assertSame( array( 'error' => $text ), $fix->apply( $this->preview( 'NEW', 'NETWORK FILE', $mode ) ) );
+		}
+		$this->assertSame( 0, $this->files->writes );
+		$this->assertSame( 'NETWORK FILE', $this->files->read( 'robots.txt' ) );
+		$this->assertSame( array(), $this->store->get( 'robots' ) );
+	}
+
+	public function test_sub_site_without_a_physical_file_keeps_the_virtual_fix(): void {
+		$this->files->may = false;
+		$fix              = $this->fix();
+		$this->assertSame( 'virtual', $fix->mode() );
+		$this->wordpress_makes( $fix, self::BASE );
+		$this->assertSame( array( 'ok' => true ), $fix->apply( $this->preview( "NEW\n", self::BASE, 'virtual' ) ) );
+		$this->assertSame( 'virtual', $this->store->get( 'robots' )['mode'] );
+		$this->assertSame( "NEW\n", $fix->filter( self::BASE, '1' ) );
+		$this->assertSame( 0, $this->files->writes );
+	}
+
+	public function test_main_site_network_admin_keeps_file_mode(): void {
+		$this->files->put( 'robots.txt', 'ORIGINAL' );
+		$this->assertSame( 'file', $this->fix()->mode() );
+		$this->assertSame( array( 'ok' => true ), $this->fix()->apply( $this->preview( 'NEW', 'ORIGINAL' ) ) );
+		$this->assertSame( 'NEW', $this->files->read( 'robots.txt' ) );
+	}
 }

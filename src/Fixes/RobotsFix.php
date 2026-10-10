@@ -102,7 +102,8 @@ class RobotsFix {
 	 * How this site serves robots.txt.
 	 *
 	 * @return string 'hidden' (search engines asked not to index), 'subdir' (WordPress is not at the
-	 *                root of the host), 'unknown' (the root folder cannot be found), 'file' (a physical
+	 *                root of the host), 'unknown' (the root folder cannot be found), 'network' (a physical
+	 *                robots.txt that this multisite request may not change), 'file' (a physical
 	 *                robots.txt) or 'virtual' (made by WordPress).
 	 */
 	public function mode(): string {
@@ -117,7 +118,10 @@ class RobotsFix {
 		if ( ! $this->files->root_known() ) {
 			return 'unknown';
 		}
-		return $this->files->exists( self::FILE ) ? 'file' : 'virtual';
+		if ( ! $this->files->exists( self::FILE ) ) {
+			return 'virtual';
+		}
+		return $this->files->may_write() ? 'file' : 'network';
 	}
 
 	/**
@@ -518,6 +522,9 @@ class RobotsFix {
 		}
 		if ( 'unknown' === $mode ) {
 			return $this->root_unknown();
+		}
+		if ( 'network' === $mode ) {
+			return __( 'On a multisite network, only a network admin on the main site can change robots.txt in the site root.', 'genready' );
 		}
 		return null;
 	}

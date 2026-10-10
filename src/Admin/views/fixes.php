@@ -68,7 +68,7 @@ $cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
 					<button type="button" class="button" data-genready-action="download"<?php echo ( empty( $card['can_write'] ) && $connected ) ? '' : ' hidden'; ?>><?php esc_html_e( 'Download the file', 'genready' ); ?></button>
 				<?php endif; ?>
 				<?php if ( 'llms' === $kind ) : ?>
-					<button type="button" class="button" data-genready-action="as-file"<?php echo ( null !== $live && 'no_route' === ( $live['state'] ?? '' ) && $connected ) ? '' : ' hidden'; ?>><?php esc_html_e( 'Write llms.txt as a file', 'genready' ); ?></button>
+					<button type="button" class="button" data-genready-action="as-file"<?php echo ( null !== $live && 'no_route' === ( $live['state'] ?? '' ) && ! empty( $card['as_file'] ) && $connected ) ? '' : ' hidden'; ?>><?php esc_html_e( 'Write llms.txt as a file', 'genready' ); ?></button>
 				<?php endif; ?>
 			</p>
 

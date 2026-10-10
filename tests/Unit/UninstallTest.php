@@ -172,4 +172,50 @@ class UninstallTest extends TestCase {
 		$this->uninstaller()->run();
 		$this->addToAssertionCount( 1 );
 	}
+
+	// Fix round A, G1: multisite file safety.
+
+	/** Files with the real may_write() rule (is_multisite, is_main_site, manage_network_options). */
+	private function network_files(): MemoryFiles {
+		return new class() extends MemoryFiles {
+			public function may_write(): bool {
+				return \GenReady\Fixes\FileWriter::may_write();
+			}
+		};
+	}
+
+	public function test_multisite_never_restores_files_from_a_sub_sites_records(): void {
+		Monkey\Functions\when( 'is_multisite' )->justReturn( true );
+		Monkey\Functions\when( 'get_sites' )->justReturn( array( 2 ) );
+		Monkey\Functions\when( 'switch_to_blog' )->justReturn( true );
+		Monkey\Functions\when( 'restore_current_blog' )->justReturn( true );
+		Monkey\Functions\when( 'is_main_site' )->justReturn( false );
+		Monkey\Functions\when( 'current_user_can' )->justReturn( true );
+		$this->files = $this->network_files();
+		$this->files->put( 'robots.txt', 'WRITTEN' );
+		$this->files->put( 'llms.txt', 'W2' );
+		$this->store->put( 'robots', $this->file_record( 'WRITTEN', 'ORIG' ) );
+		$this->store->put( 'llms', $this->file_record( 'W2', null ) );
+		$this->uninstaller()->run();
+		$this->assertSame( 'WRITTEN', $this->files->read( 'robots.txt' ) );
+		$this->assertSame( 'W2', $this->files->read( 'llms.txt' ) );
+		$this->assertSame( 0, $this->files->writes );
+	}
+
+	public function test_multisite_main_site_restores_files_for_a_network_admin(): void {
+		Monkey\Functions\when( 'is_multisite' )->justReturn( true );
+		Monkey\Functions\when( 'get_sites' )->justReturn( array( 1 ) );
+		Monkey\Functions\when( 'switch_to_blog' )->justReturn( true );
+		Monkey\Functions\when( 'restore_current_blog' )->justReturn( true );
+		Monkey\Functions\when( 'is_main_site' )->justReturn( true );
+		Monkey\Functions\when( 'current_user_can' )->alias( function ( $cap ) { return 'manage_network_options' === $cap; } );
+		$this->files = $this->network_files();
+		$this->files->put( 'robots.txt', 'WRITTEN' );
+		$this->files->put( 'llms.txt', 'W2' );
+		$this->store->put( 'robots', $this->file_record( 'WRITTEN', 'ORIG' ) );
+		$this->store->put( 'llms', $this->file_record( 'W2', null ) );
+		$this->uninstaller()->run();
+		$this->assertSame( 'ORIG', $this->files->read( 'robots.txt' ) );
+		$this->assertFalse( $this->files->exists( 'llms.txt' ) );
+	}
 }

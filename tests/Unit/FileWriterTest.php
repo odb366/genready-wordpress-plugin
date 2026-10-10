@@ -24,6 +24,8 @@ class FileWriterTest extends TestCase {
 	private $home_path;
 	/** @var array */
 	private $server = array();
+	/** @var array is_multisite, is_main_site and the manage_network_options answer. */
+	private $network = array();
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -42,6 +44,15 @@ class FileWriterTest extends TestCase {
 		$method          = &$this->method;
 		$site_url        = &$this->site_url;
 		$home_path       = &$this->home_path;
+		$this->network   = array(
+			'multisite' => false,
+			'main'      => true,
+			'admin'     => true,
+		);
+		$network         = &$this->network;
+		Monkey\Functions\when( 'is_multisite' )->alias( function () use ( &$network ) { return $network['multisite']; } );
+		Monkey\Functions\when( 'is_main_site' )->alias( function () use ( &$network ) { return $network['main']; } );
+		Monkey\Functions\when( 'current_user_can' )->alias( function ( $cap ) use ( &$network ) { return 'manage_network_options' === $cap && $network['admin']; } );
 		Monkey\Functions\when( 'get_home_path' )->alias( function () use ( &$home_path ) { return $home_path; } );
 		Monkey\Functions\when( 'home_url' )->justReturn( 'https://example.com' );
 		Monkey\Functions\when( 'site_url' )->alias( function () use ( &$site_url ) { return $site_url; } );
@@ -202,5 +213,43 @@ class FileWriterTest extends TestCase {
 	public function test_write_detects_read_back_mismatch(): void {
 		$this->fs->corrupt = true;
 		$this->assertFalse( ( $this->writer() )->write( 'robots.txt', 'NEW' ) );
+	}
+
+	// Fix round A, G1: multisite file safety.
+
+	public function test_single_site_may_write(): void {
+		$this->assertTrue( $this->writer()->may_write() );
+	}
+
+	public function test_sub_site_reads_but_never_writes_or_deletes(): void {
+		$this->network = array( 'multisite' => true, 'main' => false, 'admin' => true );
+		file_put_contents( $this->dir . 'robots.txt', 'NETWORK FILE' );
+		$files = $this->writer();
+		$this->assertFalse( $files->may_write() );
+		$this->assertTrue( $files->exists( 'robots.txt' ) );
+		$this->assertSame( 'NETWORK FILE', $files->read( 'robots.txt' ) );
+		$this->assertFalse( $files->write( 'robots.txt', 'SUB SITE' ) );
+		$this->assertFalse( $files->write( 'llms.txt', 'SUB SITE' ) );
+		$this->assertFalse( $files->delete( 'robots.txt' ) );
+		$this->assertSame( 'NETWORK FILE', file_get_contents( $this->dir . 'robots.txt' ) );
+		$this->assertFileDoesNotExist( $this->dir . 'llms.txt' );
+		$this->assertSame( array(), $this->fs->modes );
+	}
+
+	public function test_main_site_needs_a_network_admin(): void {
+		$this->network = array( 'multisite' => true, 'main' => true, 'admin' => false );
+		$this->assertFalse( $this->writer()->may_write() );
+		$this->assertFalse( $this->writer()->write( 'robots.txt', 'X' ) );
+		$this->assertFileDoesNotExist( $this->dir . 'robots.txt' );
+	}
+
+	public function test_main_site_network_admin_writes_files(): void {
+		$this->network = array( 'multisite' => true, 'main' => true, 'admin' => true );
+		$files         = $this->writer();
+		$this->assertTrue( $files->may_write() );
+		$this->assertTrue( $files->write( 'robots.txt', 'MAIN' ) );
+		$this->assertSame( 'MAIN', file_get_contents( $this->dir . 'robots.txt' ) );
+		$this->assertTrue( $files->delete( 'robots.txt' ) );
+		$this->assertFileDoesNotExist( $this->dir . 'robots.txt' );
 	}
 }

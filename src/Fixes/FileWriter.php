@@ -13,7 +13,9 @@ defined( 'ABSPATH' ) || exit;
  * Reads and writes the few files GenReady may change, and only in the site's
  * root folder (where the front index.php lives). It writes only through the
  * direct filesystem method, and checks every write by reading it back. When
- * the root folder cannot be found, it reads and writes nothing.
+ * the root folder cannot be found, it reads and writes nothing. On a multisite
+ * network every site shares the root folder, so only a network admin on the
+ * main site may write or delete there; every site may still read.
  */
 class FileWriter {
 	/** The only file names this class touches. */
@@ -24,6 +26,15 @@ class FileWriter {
 	 */
 	public function root_known(): bool {
 		return null !== $this->dir();
+	}
+
+	/**
+	 * Tell whether this request may change files in the root folder. On a
+	 * multisite network the files belong to every site, so only a network
+	 * admin on the main site may change them.
+	 */
+	public function may_write(): bool {
+		return ! is_multisite() || ( is_main_site() && current_user_can( 'manage_network_options' ) );
 	}
 
 	/**
@@ -78,11 +89,12 @@ class FileWriter {
 	 *
 	 * @param string $name    File name from ALLOWED.
 	 * @param string $content New content.
-	 * @return bool False when the name is not allowed, the write failed, or the file holds other bytes.
+	 * @return bool False when the name is not allowed, this request may not write, the write failed,
+	 *              or the file holds other bytes.
 	 */
 	public function write( string $name, string $content ): bool {
 		$path = $this->path( $name );
-		if ( null === $path ) {
+		if ( null === $path || ! $this->may_write() ) {
 			return false;
 		}
 		$filesystem = $this->filesystem();
@@ -102,10 +114,11 @@ class FileWriter {
 	 * Delete the file.
 	 *
 	 * @param string $name File name from ALLOWED.
+	 * @return bool False when the name is not allowed, this request may not write, or the file is still there.
 	 */
 	public function delete( string $name ): bool {
 		$path = $this->path( $name );
-		if ( null === $path ) {
+		if ( null === $path || ! $this->may_write() ) {
 			return false;
 		}
 		if ( ! file_exists( $path ) ) {

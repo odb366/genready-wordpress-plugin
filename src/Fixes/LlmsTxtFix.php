@@ -104,14 +104,19 @@ class LlmsTxtFix {
 	 * How this site serves llms.txt.
 	 *
 	 * @return string 'unknown' (the root folder cannot be found, so a physical file cannot be ruled
-	 *                out), 'file' (a physical llms.txt) or 'virtual' (made by this plugin).
+	 *                out), 'network' (a physical llms.txt that this multisite request may not change),
+	 *                'file' (a physical llms.txt) or 'virtual' (made by this plugin).
 	 */
 	public function mode(): string {
 		if ( ! $this->files->root_known() ) {
 			return 'unknown';
 		}
-		return $this->files->exists( self::FILE ) ? 'file' : 'virtual';
+		if ( ! $this->files->exists( self::FILE ) ) {
+			return 'virtual';
+		}
+		return $this->files->may_write() ? 'file' : 'network';
 	}
+
 
 	/**
 	 * The llms.txt that the fix starts from. In file mode it is the physical file. In virtual mode
@@ -264,6 +269,9 @@ class LlmsTxtFix {
 		$refusal = $this->refusal( $mode );
 		if ( null !== $refusal ) {
 			return array( 'error' => $refusal );
+		}
+		if ( $as_file && ! $this->files->may_write() ) {
+			return array( 'error' => $this->network() );
 		}
 		$content = $preview['content'] ?? null;
 		if ( ! is_string( $content ) || '' === $content || strlen( $content ) > self::MAX_CONTENT_BYTES ) {
@@ -507,6 +515,9 @@ class LlmsTxtFix {
 		if ( 'unknown' === $mode ) {
 			return $this->root_unknown();
 		}
+		if ( 'network' === $mode ) {
+			return $this->network();
+		}
 		$check = $this->seo_owner();
 		if ( $check['unknown'] ) {
 			return __( 'Could not check whether another plugin makes llms.txt. Try again.', 'genready' );
@@ -592,6 +603,13 @@ class LlmsTxtFix {
 	 */
 	private function root_unknown(): string {
 		return __( "GenReady cannot find this site's root folder, so it does not change llms.txt.", 'genready' );
+	}
+
+	/**
+	 * Text for a multisite request that may not change files in the shared root folder.
+	 */
+	private function network(): string {
+		return __( 'On a multisite network, only a network admin on the main site can change llms.txt in the site root.', 'genready' );
 	}
 
 	/**

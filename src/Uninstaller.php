@@ -144,9 +144,12 @@ class Uninstaller {
 
 	/**
 	 * Put back the files GenReady wrote, but only those nobody edited since.
+	 * On a multisite network the root folder is shared, so only the main site's
+	 * records count, and only for a network admin. A sub-site's records never
+	 * change the shared files.
 	 */
 	private function restore_files(): void {
-		if ( ! $this->files->root_known() ) {
+		if ( ! $this->files->root_known() || ! $this->files->may_write() ) {
 			return;
 		}
 		foreach ( self::FILE_KINDS as $kind => $name ) {

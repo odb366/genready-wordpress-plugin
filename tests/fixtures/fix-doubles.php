@@ -18,9 +18,15 @@ class MemoryFiles extends FileWriter {
 	public $unreadable = false;
 	/** @var bool */
 	public $root = true;
+	/** @var bool False on a multisite sub-site, or for a user who is not a network admin. */
+	public $may = true;
 
 	public function root_known(): bool {
 		return $this->root;
+	}
+
+	public function may_write(): bool {
+		return $this->may;
 	}
 
 	public function put( string $name, string $content ): void {
@@ -41,7 +47,7 @@ class MemoryFiles extends FileWriter {
 
 	public function write( string $name, string $content ): bool {
 		++$this->writes;
-		if ( ! $this->writable ) {
+		if ( ! $this->writable || ! $this->may ) {
 			return false;
 		}
 		if ( $this->broken_writes ) {
@@ -54,6 +60,9 @@ class MemoryFiles extends FileWriter {
 	}
 
 	public function delete( string $name ): bool {
+		if ( ! $this->may ) {
+			return false;
+		}
 		unset( $this->files[ $name ] );
 		return true;
 	}

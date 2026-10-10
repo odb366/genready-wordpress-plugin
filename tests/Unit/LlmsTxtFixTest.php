@@ -407,4 +407,41 @@ class LlmsTxtFixTest extends TestCase {
 		$this->assertArrayHasKey( 'error', $p );
 		$this->assertSame( array(), $this->client->requests );
 	}
+
+	// Fix round A, G1: multisite file safety.
+
+	public function test_sub_site_with_a_physical_file_is_refused_without_a_write(): void {
+		$this->files->may = false;
+		$this->files->put( 'llms.txt', 'NETWORK FILE' );
+		$fix  = $this->fixFor( '/' );
+		$text = 'On a multisite network, only a network admin on the main site can change llms.txt in the site root.';
+		$this->assertSame( 'network', $fix->mode() );
+		$this->assertSame( $text, $fix->refusal( 'network' ) );
+		$this->assertSame( array( 'error' => $text ), $fix->preview( array() ) );
+		$this->assertSame( array(), $this->client->requests );
+		$this->assertSame( array( 'error' => $text ), $fix->apply( $this->preview( 'NEW', 'NETWORK FILE', 'file' ) ) );
+		$this->assertSame( 0, $this->files->writes );
+		$this->assertSame( 'NETWORK FILE', $this->files->read( 'llms.txt' ) );
+		$this->assertSame( array(), $this->store->get( 'llms' ) );
+	}
+
+	public function test_sub_site_cannot_write_llms_txt_as_a_file(): void {
+		$this->files->may = false;
+		$fix              = $this->fixFor( '/' );
+		$this->assertSame( 'virtual', $fix->mode() );
+		$r = $fix->apply( $this->preview( "# Example\n", null ), true );
+		$this->assertSame( 'On a multisite network, only a network admin on the main site can change llms.txt in the site root.', $r['error'] );
+		$this->assertSame( 0, $this->files->writes );
+		$this->assertFalse( $this->files->exists( 'llms.txt' ) );
+		$this->assertSame( array(), $this->store->get( 'llms' ) );
+	}
+
+	public function test_sub_site_without_a_physical_file_keeps_the_virtual_fix(): void {
+		$this->files->may = false;
+		$this->assertSame( array( 'ok' => true ), $this->fixFor( '/' )->apply( $this->preview( "# Example\n", null ) ) );
+		$this->assertSame( 'virtual', $this->store->get( 'llms' )['mode'] );
+		$fix = $this->fixFor( '/llms.txt' );
+		$fix->serve( null );
+		$this->assertSame( "# Example\n", $fix->emitted );
+	}
 }
