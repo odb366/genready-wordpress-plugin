@@ -281,7 +281,7 @@ class RobotsFix {
 				return $result;
 			}
 		} else {
-			$this->store->put(
+			$saved = $this->store->put(
 				self::KIND,
 				array(
 					'mode'        => 'virtual',
@@ -290,9 +290,27 @@ class RobotsFix {
 					'status'      => 'applied',
 				)
 			);
+			if ( ! $saved ) {
+				return array( 'error' => __( 'GenReady could not save the fix. Try again.', 'genready' ) );
+			}
 		}
 		$this->purge();
 		return array( 'ok' => true );
+	}
+
+	/**
+	 * Tell whether the applied virtual fix is no longer served because the
+	 * robots.txt WordPress makes changed after the server checked the fix. It
+	 * runs do_robots(), which sends a header, so call it before any output.
+	 * It writes nothing.
+	 */
+	public function needs_review(): bool {
+		$fix         = $this->store->get( self::KIND );
+		$base_sha256 = $fix['base_sha256'] ?? null;
+		if ( 'virtual' !== ( $fix['mode'] ?? '' ) || ! is_string( $base_sha256 ) || 'virtual' !== $this->mode() ) {
+			return false;
+		}
+		return ! hash_equals( $base_sha256, hash( 'sha256', $this->base() ) );
 	}
 
 	/**
@@ -328,7 +346,7 @@ class RobotsFix {
 	/**
 	 * The robots_txt filter, at priority PHP_INT_MAX. It serves the stored file
 	 * only when the incoming output is the exact base the server checked. It
-	 * never calls the API, never purges and never writes files.
+	 * never calls the API, never purges and never writes files or options.
 	 *
 	 * @param mixed $output      Robots.txt that WordPress and other plugins made.
 	 * @param mixed $site_public The blog_public option. A hidden site changes the output, so the hash guard covers it.
@@ -351,17 +369,9 @@ class RobotsFix {
 			}
 			if ( ! hash_equals( $base_sha256, hash( 'sha256', (string) $output ) ) ) {
 				// Something else changed robots.txt after the server checked the
-				// fix. Serve that output as it is: never a mix nobody checked.
-				if ( 'needs_review' !== ( $fix['status'] ?? '' ) ) {
-					$fix['status'] = 'needs_review';
-					$this->store->put_status( self::KIND, $fix );
-				}
+				// fix. Serve that output as it is: never a mix nobody checked. The
+				// admin card shows "Needs review" (see needs_review()).
 				return $output;
-			}
-			if ( 'needs_review' === ( $fix['status'] ?? '' ) ) {
-				// The base is back to the one the server checked.
-				$fix['status'] = 'applied';
-				$this->store->put_status( self::KIND, $fix );
 			}
 			if ( ! headers_sent() ) {
 				header( 'Cache-Control: public, max-age=300' );
@@ -397,7 +407,7 @@ class RobotsFix {
 		if ( 'file' === ( $previous['mode'] ?? '' ) && array_key_exists( 'original', $previous ) && $this->holds_written( $current, $previous ) ) {
 			$original = is_string( $previous['original'] ) ? $previous['original'] : null;
 		}
-		$this->store->put(
+		$saved = $this->store->put(
 			self::KIND,
 			array(
 				'mode'           => 'file',
@@ -408,6 +418,10 @@ class RobotsFix {
 				'status'         => 'applied',
 			)
 		);
+		if ( ! $saved ) {
+			// Without the stored original, undo could not put the file back.
+			return array( 'error' => __( 'GenReady could not save its backup of robots.txt, so it did not change the file.', 'genready' ) );
+		}
 		if ( $this->files->write( self::FILE, $preview['content'] ) ) {
 			return array( 'ok' => true );
 		}

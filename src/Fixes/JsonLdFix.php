@@ -304,7 +304,9 @@ final class JsonLdFix {
 			'type'           => $type,
 			'existing_types' => null === $existing ? array() : $existing,
 		);
-		$this->save( $target, $record );
+		if ( ! $this->save( $target, $record ) ) {
+			return array( 'error' => $this->not_saved() );
+		}
 		$this->purge( $target );
 		return array( 'ok' => true );
 	}
@@ -328,10 +330,13 @@ final class JsonLdFix {
 			$previous = $this->record( array_pop( $versions ) );
 		}
 		if ( null === $previous ) {
-			$this->delete( $target );
+			$done = $this->delete( $target );
 		} else {
 			$previous['versions'] = $versions;
-			$this->write( $target, $previous );
+			$done                 = $this->write( $target, $previous );
+		}
+		if ( ! $done ) {
+			return array( 'error' => $this->not_saved() );
 		}
 		$this->purge( $target );
 		return array( 'ok' => true );
@@ -623,8 +628,9 @@ final class JsonLdFix {
 	 *
 	 * @param array $target Checked target.
 	 * @param array $record New record without versions.
+	 * @return bool True when the record is stored.
 	 */
-	private function save( array $target, array $record ): void {
+	private function save( array $target, array $record ): bool {
 		$previous = $this->stored( $target );
 		$versions = null === $previous ? array() : $previous['versions'];
 		if ( null !== $previous ) {
@@ -632,35 +638,45 @@ final class JsonLdFix {
 			$versions[] = $previous;
 		}
 		$record['versions'] = array_slice( $versions, -self::MAX_VERSIONS );
-		$this->write( $target, $record );
+		return $this->write( $target, $record );
 	}
 
 	/**
-	 * Write a record exactly as given.
+	 * Write a record exactly as given, then read it back.
 	 *
 	 * @param array $target Checked target.
 	 * @param array $record Record with versions.
+	 * @return bool True when the record is stored. update_post_meta() returns false also for an
+	 *              unchanged value, so only the read-back decides.
 	 */
-	private function write( array $target, array $record ): void {
+	private function write( array $target, array $record ): bool {
 		if ( isset( $target['home'] ) ) {
-			$this->store->replace( self::HOME_KIND, $record );
-			return;
+			return $this->store->replace( self::HOME_KIND, $record );
 		}
 		// update_post_meta() unslashes the value, so slash it first to keep backslashes in the node.
 		update_post_meta( $target['post_id'], self::META, wp_slash( $record ) );
+		return get_post_meta( $target['post_id'], self::META, true ) === $record;
 	}
 
 	/**
 	 * Delete the record of a target.
 	 *
 	 * @param array $target Checked target.
+	 * @return bool True when no record is stored afterwards.
 	 */
-	private function delete( array $target ): void {
+	private function delete( array $target ): bool {
 		if ( isset( $target['home'] ) ) {
-			$this->store->remove( self::HOME_KIND );
-			return;
+			return $this->store->remove( self::HOME_KIND );
 		}
 		delete_post_meta( $target['post_id'], self::META );
+		return '' === get_post_meta( $target['post_id'], self::META, true );
+	}
+
+	/**
+	 * Text for a record that WordPress did not store.
+	 */
+	private function not_saved(): string {
+		return __( 'GenReady could not save the structured data. Try again.', 'genready' );
 	}
 
 	/**

@@ -70,6 +70,7 @@ class JsonLdFixTest extends TestCase {
 		$posts = &$this->posts;
 		Monkey\Functions\when( 'get_option' )->alias( function ( $k, $d = false ) use ( &$opts ) { return $opts[ $k ] ?? $d; } );
 		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v, $a = null ) use ( &$opts ) { $opts[ $k ] = $v; return true; } );
+		Monkey\Functions\when( 'delete_option' )->alias( function ( $k ) use ( &$opts ) { unset( $opts[ $k ] ); return true; } );
 		Monkey\Functions\when( 'get_post_meta' )->alias( function ( $id, $k = '', $single = false ) use ( &$meta ) { return $meta[ $id ][ $k ] ?? ''; } );
 		Monkey\Functions\when( 'update_post_meta' )->alias( function ( $id, $k, $v ) use ( &$meta ) { $meta[ $id ][ $k ] = stripslashes_deep_stub( $v ); return true; } );
 		Monkey\Functions\when( 'wp_slash' )->alias( function ( $v ) { return is_array( $v ) ? array_map( __NAMESPACE__ . '\\addslashes_deep_stub', $v ) : ( is_string( $v ) ? addslashes( $v ) : $v ); } );
@@ -597,7 +598,7 @@ class JsonLdFixTest extends TestCase {
 		$this->assertSame( 'A tagline', $p['node']['description'] );
 		$this->assertSame( array( 'home' => true ), $p['target'] );
 		$this->assertSame( array( 'ok' => true ), $this->fix->apply( $p ) );
-		$this->assertSame( 'A tagline', $this->options['genready_fixes']['jsonld_home']['node']['description'] );
+		$this->assertSame( 'A tagline', $this->options['genready_fix_jsonld_home']['node']['description'] );
 		$this->assertSame( array( 'https://example.com/' ), $this->caches->calls );
 
 		// The blog home page prints the home node; a post does not.
@@ -615,7 +616,7 @@ class JsonLdFixTest extends TestCase {
 		$this->assertSame( '', $this->printed() );
 
 		$this->assertSame( array( 'ok' => true ), $this->fix->undo( array( 'home' => true ) ) );
-		$this->assertArrayNotHasKey( 'jsonld_home', $this->options['genready_fixes'] );
+		$this->assertArrayNotHasKey( 'genready_fix_jsonld_home', $this->options );
 	}
 
 	public function test_target_for_maps_posts_static_front_page_and_unknown_urls(): void {
@@ -708,6 +709,33 @@ class JsonLdFixTest extends TestCase {
 			$this->assertArrayHasKey( 'error', $this->fix->apply( $preview ) );
 		}
 		$this->assertArrayNotHasKey( 5, $this->meta );
+	}
+
+	// Fix round A, G3: a record that does not save is an error.
+
+	public function test_apply_reports_post_meta_that_does_not_save(): void {
+		$this->seo->active = array( 'yoast' );
+		Monkey\Functions\when( 'update_post_meta' )->justReturn( false );
+		$r = $this->fix->apply( $this->preview_for( $this->answer( array( '@type' => 'Article', 'headline' => 'H' ) ) ) );
+		$this->assertSame( 'GenReady could not save the structured data. Try again.', $r['error'] );
+		$this->assertSame( array(), $this->caches->calls );
+	}
+
+	public function test_undo_reports_post_meta_that_does_not_save(): void {
+		$this->seo->active = array( 'yoast' );
+		$this->fix->apply( $this->preview_for( $this->answer( array( '@type' => 'Article', 'headline' => 'First' ) ) ) );
+		$this->fix->apply( $this->preview_for( $this->answer( array( '@type' => 'Article', 'headline' => 'Second' ) ) ) );
+		Monkey\Functions\when( 'update_post_meta' )->justReturn( false );
+		$r = $this->fix->undo( array( 'post_id' => 5 ) );
+		$this->assertSame( 'GenReady could not save the structured data. Try again.', $r['error'] );
+		$this->assertSame( 'Second', $this->meta[5][ JsonLdFix::META ]['node']['headline'] );
+	}
+
+	public function test_apply_reports_a_home_record_that_does_not_save(): void {
+		$this->seo->active = array( 'yoast' );
+		Monkey\Functions\when( 'update_option' )->justReturn( false );
+		$p = $this->preview_for( $this->answer( array( '@type' => 'WebPage', 'name' => 'Example & Co' ) ), array(), 'https://example.com/' );
+		$this->assertSame( 'GenReady could not save the structured data. Try again.', $this->fix->apply( $p )['error'] );
 	}
 }
 

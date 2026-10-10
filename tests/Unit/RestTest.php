@@ -407,7 +407,7 @@ class RestTest extends TestCase {
 		$this->connect();
 		$record = array( 'mode' => 'virtual', 'content' => "User-agent: GPTBot\n", 'base_sha256' => str_repeat( 'a', 64 ), 'status' => 'applied' );
 		$this->fixes->put( 'robots', $record );
-		$fixes_before                                  = $this->options['genready_fixes'];
+		$fixes_before                                  = $this->options['genready_fix_robots'];
 		$this->options['genready_meta']                = 'tok12345678';
 		$this->options['genready_settings']            = array( 'last_report_id' => self::REPORT_ID, 'other' => 1 );
 		$this->transients['genready_report_cache']     = array( 'id' => self::REPORT_ID );
@@ -418,7 +418,7 @@ class RestTest extends TestCase {
 		$this->assertSame( array( 'ok' => true ), $this->rest()->disconnect( new FakeRequest() ) );
 
 		$this->assertNull( $this->store->load() );
-		$this->assertSame( $fixes_before, $this->options['genready_fixes'] );
+		$this->assertSame( $fixes_before, $this->options['genready_fix_robots'] );
 		$this->assertSame( 'tok12345678', $this->options['genready_meta'], 'the verification tag stays' );
 		$this->assertSame( array( 'other' => 1 ), $this->options['genready_settings'] );
 		$this->assertSame( array(), $this->transients );
@@ -628,5 +628,27 @@ class RestTest extends TestCase {
 		$record = $this->fixes->get( 'llms' );
 		$this->assertSame( 'NEW', $record['content'] );
 		$this->assertArrayNotHasKey( 'live', $record, 'a result for OLD must not be stored on NEW' );
+	}
+
+	// Fix round A, G3: the card computes "needs review" in the admin.
+
+	public function test_robots_card_needs_review_when_the_base_changed_since_the_check(): void {
+		$robots = new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, 'd1' );
+		$output = self::BASE;
+		Monkey\Functions\when( 'do_robots' )->alias(
+			function () use ( $robots, &$output ) {
+				echo $robots->filter( $output, '1' );
+			}
+		);
+		$seo   = new SeoPlugins( $this->files );
+		$cards = new FixCards( $this->fixes, $robots, new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, $seo, 'd1' ), new JsonLdFix( $this->fixes, $this->client, $this->caches, $seo, 'd1' ), $this->files );
+		$this->fixes->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', self::BASE ), 'status' => 'applied' ) );
+		$this->assertSame( 'applied', $cards->card( 'robots' )['state'] );
+		$output = "User-agent: *\nDisallow: /\n";
+		$card   = $cards->card( 'robots' );
+		$this->assertSame( 'needs_review', $card['state'] );
+		$this->assertSame( 'Needs review', $card['state_text'] );
+		$this->assertStringContainsString( 'Preview again', $card['message'] );
+		$this->assertSame( 'applied', $this->fixes->get( 'robots' )['status'], 'the card writes nothing' );
 	}
 }

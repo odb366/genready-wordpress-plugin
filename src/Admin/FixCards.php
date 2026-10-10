@@ -139,7 +139,9 @@ class FixCards {
 	}
 
 	/**
-	 * One card.
+	 * One card. The robots.txt card runs do_robots() to tell whether the fix
+	 * needs review, so build it before any output (the admin page builds its
+	 * cards on the load hook).
 	 *
 	 * @param string $kind          'robots', 'llms' or 'jsonld'.
 	 * @param array  $jsonld_target Target of the JSON-LD fix.
@@ -173,7 +175,7 @@ class FixCards {
 			'can_write'  => 'file' !== $mode || $this->files->can_write( 'robots' === $kind ? RobotsFix::FILE : LlmsTxtFix::FILE ),
 			'as_file'    => 'llms' === $kind && $this->files->may_write(),
 		);
-		if ( $applied && 'needs_review' === ( $record['status'] ?? '' ) ) {
+		if ( $applied && 'robots' === $kind && $this->robots->needs_review() ) {
 			$card['state']      = 'needs_review';
 			$card['state_text'] = __( 'Needs review', 'genready' );
 			$card['message']    = __( 'Another plugin or a setting changed robots.txt after GenReady checked the fix, so WordPress serves robots.txt without it. Preview again.', 'genready' );

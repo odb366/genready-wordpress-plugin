@@ -103,13 +103,13 @@ class RobotsFixTest extends TestCase {
 	}
 
 	public function test_serves_incoming_output_when_base_changed(): void {
-		$this->store->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', 'old base' ) ) );
+		$this->store->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', 'old base' ), 'status' => 'applied' ) );
 		$this->assertSame( 'changed by Yoast', $this->fix()->filter( 'changed by Yoast', '1' ) );
-		$this->assertSame( 'needs_review', $this->store->get( 'robots' )['status'] );
+		$this->assertSame( 'applied', $this->store->get( 'robots' )['status'], 'the filter never writes' );
 	}
 
 	public function test_corrupt_store_fails_safe(): void {
-		$this->options['genready_fixes'] = 'not an array';
+		$this->options['genready_fix_robots'] = 'not an array';
 		$this->assertSame( 'original', $this->fix()->filter( 'original', '1' ) );
 	}
 
@@ -441,15 +441,28 @@ class RobotsFixTest extends TestCase {
 		$this->assertSame( 0, $this->files->writes );
 	}
 
-	public function test_filter_marks_needs_review_only_once(): void {
+	public function test_filter_with_a_changed_base_writes_nothing(): void {
 		$this->store->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', 'old base' ), 'status' => 'applied' ) );
-		$writes = 0;
-		$opts   = &$this->options;
-		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v ) use ( &$opts, &$writes ) { $opts[ $k ] = $v; ++$writes; return true; } );
-		$fix = $this->fix();
-		$fix->filter( 'changed', '1' );
-		$fix->filter( 'changed', '1' );
-		$this->assertSame( 1, $writes );
+		$writes = $this->count_option_writes();
+		$fix    = $this->fix();
+		$this->assertSame( 'changed', $fix->filter( 'changed', '1' ) );
+		$this->assertSame( 'changed', $fix->filter( 'changed', '1' ) );
+		$this->assertSame( array(), $writes->calls );
+	}
+
+	/** Record every option write. The filter catches Throwable, so a throwing stub would hide a write. */
+	private function count_option_writes(): \stdClass {
+		$writes        = new \stdClass();
+		$writes->calls = array();
+		foreach ( array( 'update_option', 'add_option', 'delete_option' ) as $function ) {
+			Monkey\Functions\when( $function )->alias(
+				function ( $name ) use ( $writes, $function ) {
+					$writes->calls[] = $function . ':' . $name;
+					return true;
+				}
+			);
+		}
+		return $writes;
 	}
 
 	public function test_filter_ignores_file_records_and_errors(): void {
@@ -542,10 +555,10 @@ class RobotsFixTest extends TestCase {
 		);
 		try {
 			foreach ( $records as $record ) {
-				$this->options['genready_fixes'] = array( 'robots' => $record );
+				$this->options['genready_fix_robots'] = $record;
 				$this->assertSame( self::BASE, $this->fix()->filter( self::BASE, '1' ) );
 			}
-			$this->options['genready_fixes'] = array( 'robots' => array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', self::BASE ) ) );
+			$this->options['genready_fix_robots'] = array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', self::BASE ) );
 			$this->assertSame( array( 'not', 'a string' ), $this->fix()->filter( array( 'not', 'a string' ), '1' ) );
 			$this->assertSame( 'NEW', $this->fix()->filter( self::BASE, '1' ) );
 		} finally {
@@ -642,19 +655,30 @@ class RobotsFixTest extends TestCase {
 		$this->assertSame( 'NEW', $this->fix()->filter( self::BASE, '1' ) );
 	}
 
-	public function test_status_returns_to_applied_when_the_base_comes_back(): void {
-		$this->store->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', self::BASE ), 'status' => 'applied' ) );
-		$writes = 0;
-		$opts   = &$this->options;
-		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v ) use ( &$opts, &$writes ) { $opts[ $k ] = $v; ++$writes; return true; } );
+	public function test_filter_with_the_checked_base_writes_nothing(): void {
+		$this->store->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', self::BASE ), 'status' => 'needs_review' ) );
+		$writes = $this->count_option_writes();
+		$this->assertSame( 'NEW', $this->fix()->filter( self::BASE, '1' ) );
+		$this->assertSame( array(), $writes->calls );
+	}
+
+	public function test_file_apply_refuses_when_the_backup_does_not_save(): void {
+		$this->files->put( 'robots.txt', 'ORIGINAL' );
+		Monkey\Functions\when( 'update_option' )->justReturn( false );
+		$r = $this->fix()->apply( $this->preview( 'NEW', 'ORIGINAL' ) );
+		$this->assertSame( 'GenReady could not save its backup of robots.txt, so it did not change the file.', $r['error'] );
+		$this->assertSame( 0, $this->files->writes );
+		$this->assertSame( 'ORIGINAL', $this->files->read( 'robots.txt' ) );
+		$this->assertSame( array(), $this->caches->calls );
+	}
+
+	public function test_virtual_apply_reports_a_record_that_does_not_save(): void {
 		$fix = $this->fix();
-		$this->assertSame( 'changed', $fix->filter( 'changed', '1' ) );
-		$this->assertSame( 'needs_review', $this->store->get( 'robots' )['status'] );
-		$this->assertSame( 'NEW', $fix->filter( self::BASE, '1' ) );
-		$this->assertSame( 'applied', $this->store->get( 'robots' )['status'] );
-		$this->assertSame( 'NEW', $fix->filter( self::BASE, '1' ) );
-		$this->assertSame( 2, $writes );
-		$this->assertSame( array(), $this->store->get( 'robots' )['versions'] );
+		$this->wordpress_makes( $fix, self::BASE );
+		Monkey\Functions\when( 'update_option' )->justReturn( false );
+		$r = $fix->apply( $this->preview( "NEW\n", self::BASE, 'virtual' ) );
+		$this->assertSame( 'GenReady could not save the fix. Try again.', $r['error'] );
+		$this->assertSame( array(), $this->caches->calls );
 	}
 
 	// Fix round A, G1: multisite file safety.

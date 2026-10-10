@@ -67,6 +67,7 @@ class LlmsTxtFixTest extends TestCase {
 		$blog          = &$this->blog;
 		Monkey\Functions\when( 'get_option' )->alias( function ( $k, $d = false ) use ( &$opts ) { return $opts[ $k ] ?? $d; } );
 		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v, $a = null ) use ( &$opts ) { $opts[ $k ] = $v; return true; } );
+		Monkey\Functions\when( 'delete_option' )->alias( function ( $k ) use ( &$opts ) { unset( $opts[ $k ] ); return true; } );
 		Monkey\Functions\when( '__' )->returnArg( 1 );
 		Monkey\Functions\when( 'home_url' )->alias( function ( $path = '' ) { return 'https://example.com' . $path; } );
 		Monkey\Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
@@ -160,7 +161,7 @@ class LlmsTxtFixTest extends TestCase {
 	}
 
 	public function test_corrupt_store_fails_safe(): void {
-		$this->options['genready_fixes'] = 'x';
+		$this->options['genready_fix_llms'] = 'x';
 		$fix = $this->fixFor( '/llms.txt' );
 		$fix->serve( null );
 		$this->assertNull( $fix->emitted );
@@ -443,5 +444,23 @@ class LlmsTxtFixTest extends TestCase {
 		$fix = $this->fixFor( '/llms.txt' );
 		$fix->serve( null );
 		$this->assertSame( "# Example\n", $fix->emitted );
+	}
+
+	// Fix round A, G3: the backup must save before a file changes.
+
+	public function test_file_apply_refuses_when_the_backup_does_not_save(): void {
+		$this->files->put( 'llms.txt', 'ORIGINAL' );
+		Monkey\Functions\when( 'update_option' )->justReturn( false );
+		$r = $this->fixFor( '/' )->apply( $this->preview( 'NEW', 'ORIGINAL', 'file' ) );
+		$this->assertSame( 'GenReady could not save its backup of llms.txt, so it did not change the file.', $r['error'] );
+		$this->assertSame( 0, $this->files->writes );
+		$this->assertSame( 'ORIGINAL', $this->files->read( 'llms.txt' ) );
+	}
+
+	public function test_virtual_apply_reports_a_record_that_does_not_save(): void {
+		Monkey\Functions\when( 'update_option' )->justReturn( false );
+		$r = $this->fixFor( '/' )->apply( $this->preview( '# X', null ) );
+		$this->assertSame( 'GenReady could not save the fix. Try again.', $r['error'] );
+		$this->assertSame( array(), $this->caches->calls );
 	}
 }

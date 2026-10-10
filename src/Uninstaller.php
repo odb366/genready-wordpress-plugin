@@ -27,8 +27,8 @@ class Uninstaller {
 		'robots' => 'robots.txt',
 		'llms'   => 'llms.txt',
 	);
-	/** Options the plugin stores in each site. */
-	const OPTIONS = array( 'genready_connection', 'genready_fixes', 'genready_meta', 'genready_settings' );
+	/** Options the plugin stores in each site. 'genready_fixes' is the name used before release. */
+	const OPTIONS = array( 'genready_connection', 'genready_fix_robots', 'genready_fix_llms', 'genready_fix_jsonld_home', 'genready_fixes', 'genready_meta', 'genready_settings' );
 	/** Transients with a fixed name. Per-user ones are removed by prefix. */
 	const TRANSIENTS = array( 'genready_report_cache', 'genready_account_cache' );
 	/** Post meta key of the per-post JSON-LD record. */

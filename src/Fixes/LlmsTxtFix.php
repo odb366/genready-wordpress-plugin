@@ -300,7 +300,7 @@ class LlmsTxtFix {
 				return $result;
 			}
 		} else {
-			$this->store->put(
+			$saved = $this->store->put(
 				self::KIND,
 				array(
 					'mode'        => 'virtual',
@@ -309,6 +309,9 @@ class LlmsTxtFix {
 					'status'      => 'applied',
 				)
 			);
+			if ( ! $saved ) {
+				return array( 'error' => __( 'GenReady could not save the fix. Try again.', 'genready' ) );
+			}
 		}
 		$this->purge();
 		return array( 'ok' => true );
@@ -413,7 +416,7 @@ class LlmsTxtFix {
 		if ( 'file' === ( $previous['mode'] ?? '' ) && array_key_exists( 'original', $previous ) && $this->holds_written( $current, $previous ) ) {
 			$original = is_string( $previous['original'] ) ? $previous['original'] : null;
 		}
-		$this->store->put(
+		$saved = $this->store->put(
 			self::KIND,
 			array(
 				'mode'           => 'file',
@@ -424,6 +427,10 @@ class LlmsTxtFix {
 				'status'         => 'applied',
 			)
 		);
+		if ( ! $saved ) {
+			// Without the stored original, undo could not put the file back.
+			return array( 'error' => __( 'GenReady could not save its backup of llms.txt, so it did not change the file.', 'genready' ) );
+		}
 		if ( $this->files->write( self::FILE, $preview['content'] ) ) {
 			return array( 'ok' => true );
 		}

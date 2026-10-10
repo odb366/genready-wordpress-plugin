@@ -136,4 +136,46 @@ class PageTest extends TestCase {
 		$this->assertStringContainsString( '"justConnected":true', $this->inline['genready-admin'] );
 		$this->assertArrayNotHasKey( 'genready_notice_7', $this->transients );
 	}
+
+	// Fix round A, G3: the robots.txt card runs do_robots(), which sends a header, so the
+	// Fixes tab builds its cards on the load hook, before wp-admin prints anything.
+
+	public function test_fixes_tab_builds_the_cards_before_any_output(): void {
+		$hooks = array();
+		Monkey\Functions\when( 'add_action' )->alias( function ( $hook, $callback ) use ( &$hooks ) { $hooks[ $hook ] = $callback; } );
+		$client = new FakeClient();
+		$files  = new MemoryFiles();
+		$fixes  = new FixStore();
+		$caches = new RecordingCaches();
+		$seo    = new SeoPlugins( $files );
+		$cards  = new class( $fixes, new RobotsFix( $fixes, $files, $client, $caches, 'd1' ), new LlmsTxtFix( $fixes, $files, $client, $caches, $seo, 'd1' ), new JsonLdFix( $fixes, $client, $caches, $seo, 'd1' ), $files ) extends FixCards {
+			/** @var int */
+			public $built = 0;
+			public function all( array $jsonld_target ): array {
+				++$this->built;
+				return array();
+			}
+			public function jsonld_target( ?string $report_url ): array {
+				return array();
+			}
+		};
+		$page   = new Page( $this->store, new Reports( $this->store, $client ), $cards );
+		$page->register();
+		$this->assertSame( array( $page, 'prepare' ), $hooks['load-settings_page_genready'] );
+
+		$_GET = array( 'tab' => 'fixes' );
+		Monkey\Functions\when( 'sanitize_key' )->returnArg( 1 );
+		Monkey\Functions\when( 'wp_unslash' )->returnArg( 1 );
+		Monkey\Functions\when( '__' )->returnArg( 1 );
+		Monkey\Functions\when( 'esc_attr__' )->returnArg( 1 );
+		Monkey\Functions\when( 'esc_html' )->returnArg( 1 );
+		Monkey\Functions\when( 'esc_html_e' )->alias( function ( $t ) { echo $t; } );
+		$page->prepare();
+		$this->assertSame( 1, $cards->built );
+		ob_start();
+		$page->render();
+		$html = (string) ob_get_clean();
+		$this->assertSame( 1, $cards->built, 'render reuses the cards built on the load hook' );
+		$this->assertStringContainsString( 'genready-fixes', $html );
+	}
 }

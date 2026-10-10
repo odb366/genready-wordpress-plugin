@@ -68,7 +68,7 @@ class UninstallTest extends TestCase {
 		$this->store->put( 'robots', $this->file_record( 'WRITTEN', 'ORIG' ) );
 		$this->store->put( 'llms', $this->file_record( 'W2', null ) );
 		$this->store->put( 'jsonld_home', array( 'content' => '{}' ) );
-		foreach ( array( 'genready_connection', 'genready_settings', 'genready_meta' ) as $option ) {
+		foreach ( array( 'genready_connection', 'genready_settings', 'genready_meta', 'genready_fixes' ) as $option ) {
 			$this->options[ $option ] = 'x';
 		}
 		$this->db->rows['genready_refresh_lock'] = '123';
@@ -82,7 +82,7 @@ class UninstallTest extends TestCase {
 		$this->assertSame( 'ORIG', $this->files->read( 'robots.txt' ) );
 		$this->assertSame( 'EDITED', $this->files->read( 'llms.txt' ) );
 		$this->assertSame( 1, $revoked );
-		foreach ( array( 'genready_connection', 'genready_fixes', 'genready_meta', 'genready_settings' ) as $option ) {
+		foreach ( array( 'genready_connection', 'genready_fixes', 'genready_fix_robots', 'genready_fix_llms', 'genready_fix_jsonld_home', 'genready_meta', 'genready_settings' ) as $option ) {
 			$this->assertArrayNotHasKey( $option, $this->options );
 		}
 		$this->assertArrayNotHasKey( 'genready_refresh_lock', $this->db->rows );
@@ -104,7 +104,8 @@ class UninstallTest extends TestCase {
 		$this->uninstaller()->run();
 		$this->assertSame( 'EDITED', $this->files->read( 'llms.txt' ) );
 		$this->assertSame( 'HAND MADE', $this->files->read( 'robots.txt' ) );
-		$this->assertArrayNotHasKey( 'genready_fixes', $this->options );
+		$this->assertArrayNotHasKey( 'genready_fix_llms', $this->options );
+		$this->assertArrayNotHasKey( 'genready_fix_robots', $this->options );
 	}
 
 	public function test_uninstall_ignores_virtual_records_and_missing_files(): void {
@@ -124,7 +125,7 @@ class UninstallTest extends TestCase {
 		$this->uninstaller()->run();
 		$this->assertSame( 'WRITTEN', $this->files->read( 'robots.txt' ) );
 		$this->assertSame( 0, $this->files->writes );
-		$this->assertArrayNotHasKey( 'genready_fixes', $this->options );
+		$this->assertArrayNotHasKey( 'genready_fix_robots', $this->options );
 	}
 
 	public function test_uninstall_deletes_prefixed_transients_and_user_meta(): void {
@@ -146,7 +147,7 @@ class UninstallTest extends TestCase {
 		$this->uninstaller( function () { throw new \RuntimeException( 'network down' ); } )->run();
 		$this->assertCount( 1, $this->calls['delete_post_meta_by_key'] );
 		$this->assertArrayNotHasKey( 'genready_connection', $this->options );
-		$this->assertArrayNotHasKey( 'genready_fixes', $this->options );
+		$this->assertArrayNotHasKey( 'genready_fix_jsonld_home', $this->options );
 	}
 
 	public function test_multisite_runs_per_site(): void {

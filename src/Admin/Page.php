@@ -58,6 +58,12 @@ final class Page {
 	 * @var array|null
 	 */
 	private $state = null;
+	/**
+	 * The fix cards of the Fixes tab, built on the load hook. Null until built.
+	 *
+	 * @var array[]|null
+	 */
+	private $fix_cards = null;
 
 	/**
 	 * Build the page.
@@ -77,6 +83,7 @@ final class Page {
 	 */
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
+		add_action( 'load-' . self::HOOK, array( $this, 'prepare' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue' ) );
 		add_action( 'admin_notices', array( $this, 'plugins_notice' ) );
 	}
@@ -86,6 +93,16 @@ final class Page {
 	 */
 	public function add_menu(): void {
 		add_options_page( 'GenReady', 'GenReady', 'manage_options', self::SLUG, array( $this, 'render' ) );
+	}
+
+	/**
+	 * Build the fix cards before wp-admin prints anything. The robots.txt card
+	 * runs do_robots(), which sends a Content-Type header.
+	 */
+	public function prepare(): void {
+		if ( 'fixes' === $this->tab() && current_user_can( 'manage_options' ) ) {
+			$this->fix_cards();
+		}
 	}
 
 	/**
@@ -222,7 +239,7 @@ final class Page {
 		if ( 'fixes' === $tab ) {
 			return array(
 				'connected' => $connected,
-				'cards'     => $this->cards->all( $this->cards->jsonld_target( $this->reports->cached_url() ) ),
+				'cards'     => $this->fix_cards(),
 			);
 		}
 		return array(
@@ -230,6 +247,18 @@ final class Page {
 			'account'   => $connected ? $this->reports->account() : null,
 			'tag_on'    => MetaTag::is_valid( get_option( MetaTag::OPTION ) ),
 		);
+	}
+
+	/**
+	 * The fix cards, built once.
+	 *
+	 * @return array[]
+	 */
+	private function fix_cards(): array {
+		if ( null === $this->fix_cards ) {
+			$this->fix_cards = $this->cards->all( $this->cards->jsonld_target( $this->reports->cached_url() ) );
+		}
+		return $this->fix_cards;
 	}
 
 	/**
