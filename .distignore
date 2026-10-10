@@ -9,3 +9,5 @@ node_modules
 .git
 .gitignore
 .distignore
+.superpowers
+.phpunit.result.cache
