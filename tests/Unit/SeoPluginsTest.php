@@ -5,6 +5,8 @@ use Brain\Monkey;
 use GenReady\Compat\SeoPlugins;
 use PHPUnit\Framework\TestCase;
 
+require_once dirname( __DIR__ ) . '/fixtures/fix-doubles.php';
+
 class SeoPluginsTest extends TestCase {
 	/** @var array */
 	private $options = array();
@@ -98,7 +100,7 @@ class SeoPluginsTest extends TestCase {
 	public function test_aioseo_owns_llms_txt_when_enabled_in_its_options(): void {
 		define( 'AIOSEO_VERSION', '4.9.0' );
 		$this->options['aioseo_options'] = wp_json_encode_stub( array( 'sitemap' => array( 'llms' => array( 'enable' => true ) ) ) );
-		$seo                             = new SeoPlugins();
+		$seo                             = new SeoPlugins( $this->files() );
 		$this->assertSame( array( 'aioseo' ), $seo->active() );
 		$owner = $seo->llms_txt_owner();
 		$this->assertSame( 'All in One SEO', $owner['plugin'] );
@@ -109,23 +111,58 @@ class SeoPluginsTest extends TestCase {
 	 * @runInSeparateProcess
 	 * @preserveGlobalState disabled
 	 */
-	public function test_aioseo_does_not_own_llms_txt_when_turned_off(): void {
+	public function test_aioseo_explicitly_off_is_not_owner_even_with_a_file(): void {
 		define( 'AIOSEO_VERSION', '4.9.0' );
 		$this->options['aioseo_options'] = wp_json_encode_stub( array( 'sitemap' => array( 'llms' => array( 'enable' => false ) ) ) );
-		$this->assertNull( ( new SeoPlugins() )->llms_txt_owner() );
+		$this->assertNull( ( new SeoPlugins( $this->files( true ) ) )->llms_txt_owner() );
 	}
 
 	/**
 	 * @runInSeparateProcess
 	 * @preserveGlobalState disabled
 	 */
-	public function test_aioseo_with_unreadable_options_counts_as_owner(): void {
+	public function test_aioseo_with_unclear_setting_and_a_file_is_owner(): void {
 		define( 'AIOSEO_VERSION', '5.0.3' );
-		// Its docs say the feature is on by default; the code default is off. Unknown fails toward not overwriting.
 		foreach ( array( false, 'not json', wp_json_encode_stub( array( 'sitemap' => array() ) ) ) as $value ) {
 			$this->options['aioseo_options'] = $value;
-			$this->assertSame( 'All in One SEO', ( new SeoPlugins() )->llms_txt_owner()['plugin'] );
+			$this->assertSame( 'All in One SEO', ( new SeoPlugins( $this->files( true ) ) )->llms_txt_owner()['plugin'] );
 		}
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_aioseo_with_unclear_setting_and_no_file_is_not_owner(): void {
+		define( 'AIOSEO_VERSION', '5.0.3' );
+		foreach ( array( false, 'not json', wp_json_encode_stub( array( 'sitemap' => array() ) ) ) as $value ) {
+			$this->options['aioseo_options'] = $value;
+			$this->assertNull( ( new SeoPlugins( $this->files() ) )->llms_txt_owner() );
+		}
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_aioseo_with_unclear_setting_and_unknown_root_is_owner(): void {
+		define( 'AIOSEO_VERSION', '5.0.3' );
+		$files       = $this->files();
+		$files->root = false;
+		$this->assertSame( 'All in One SEO', ( new SeoPlugins( $files ) )->llms_txt_owner()['plugin'] );
+	}
+
+	/**
+	 * In-memory site root, with or without a physical llms.txt.
+	 *
+	 * @param bool $with_file Whether llms.txt exists.
+	 */
+	private function files( bool $with_file = false ): MemoryFiles {
+		$files = new MemoryFiles();
+		if ( $with_file ) {
+			$files->put( 'llms.txt', 'x' );
+		}
+		return $files;
 	}
 }
 

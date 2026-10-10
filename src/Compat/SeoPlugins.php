@@ -7,6 +7,8 @@
 
 namespace GenReady\Compat;
 
+use GenReady\Fixes\FileWriter;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -20,6 +22,22 @@ defined( 'ABSPATH' ) || exit;
  * exceptions: the caller treats an exception as "unknown", never as "no owner".
  */
 class SeoPlugins {
+	/**
+	 * Files in the site root.
+	 *
+	 * @var FileWriter
+	 */
+	private $files;
+
+	/**
+	 * Build the check.
+	 *
+	 * @param FileWriter|null $files Files in the site root. All in One SEO is judged by its llms.txt file when its setting is unclear.
+	 */
+	public function __construct( ?FileWriter $files = null ) {
+		$this->files = $files ?? new FileWriter();
+	}
+
 	/**
 	 * Which of the three plugins are active, by their version constant.
 	 *
@@ -92,10 +110,17 @@ class SeoPlugins {
 
 	/**
 	 * All in One SEO keeps its options as JSON in 'aioseo_options'. The switch is
-	 * sitemap.llms.enable. The code default is off, but its docs say the feature
-	 * is on by default, so a value that is missing or unreadable counts as on: only
-	 * an explicit "off" frees the file. Releases before 4.9.0 are not in the plugin
-	 * repository's tags, so the first version is not confirmed; 4.8.0 is a safe floor.
+	 * sitemap.llms.enable. Its code default is off, but its docs say the feature
+	 * is on by default, so a missing or unreadable value is not proof either way.
+	 * AIOSEO serves llms.txt only as a static file: it writes the file when the
+	 * feature is on and deletes it when the feature is off. So the rule is:
+	 * - the setting is explicitly on: owner;
+	 * - the setting is explicitly off: never the owner;
+	 * - the setting is missing or unreadable: owner only when a physical llms.txt
+	 *   exists in the site root, or when the root folder is unknown (a file cannot
+	 *   be ruled out, so GenReady does not overwrite).
+	 * Releases before 4.9.0 are not in the plugin repository's tags, so the first
+	 * version is not confirmed; 4.8.0 is a safe floor.
 	 */
 	private function aioseo(): bool {
 		if ( ! $this->version_at_least( 'AIOSEO_VERSION', '4.8.0' ) ) {
@@ -108,7 +133,10 @@ class SeoPlugins {
 		$enable = is_array( $options ) && isset( $options['sitemap']['llms'] ) && is_array( $options['sitemap']['llms'] )
 			? ( $options['sitemap']['llms']['enable'] ?? null )
 			: null;
-		return null === $enable || $this->is_on( $enable );
+		if ( is_bool( $enable ) || 0 === $enable || 1 === $enable || '0' === $enable || '1' === $enable ) {
+			return $this->is_on( $enable );
+		}
+		return ! $this->files->root_known() || $this->files->exists( 'llms.txt' );
 	}
 
 	/**

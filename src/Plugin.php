@@ -138,7 +138,7 @@ final class Plugin {
 			return is_string( $domain_id ) ? $domain_id : '';
 		};
 		$this->robots = new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, $domain_id );
-		$this->llms   = new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, new SeoPlugins(), $domain_id );
+		$this->llms   = new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, new SeoPlugins( $this->files ), $domain_id );
 		add_filter( 'robots_txt', array( $this->robots, 'filter' ), PHP_INT_MAX, 2 );
 		add_action( 'parse_request', array( $this->llms, 'serve' ), 0 );
 
