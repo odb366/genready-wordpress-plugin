@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
  * Detection uses the function, class or constant of the cache itself, never
  * has_action(). Run it only from admin actions, never on the front end.
  */
-final class Caches {
+class Caches {
 	/**
 	 * Purge every page cache that is present.
 	 *

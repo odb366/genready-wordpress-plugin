@@ -36,6 +36,14 @@ class PluginTest extends TestCase {
 		$this->assertInstanceOf( \GenReady\Connection\TokenStore::class, $plugin->store() );
 	}
 
+	public function test_boot_hooks_the_robots_filter_last_without_loading_the_connection(): void {
+		Monkey\Functions\expect( 'get_option' )->never();
+		Monkey\Filters\expectAdded( 'robots_txt' )->once()->with( \Mockery::type( 'array' ), PHP_INT_MAX, 2 );
+		$plugin = \GenReady\Plugin::instance();
+		$plugin->boot();
+		$this->assertInstanceOf( \GenReady\Fixes\RobotsFix::class, $plugin->robots() );
+	}
+
 	public function test_callback_stores_the_notice_and_redirects(): void {
 		Monkey\Functions\when( 'add_action' )->justReturn( true );
 		Monkey\Functions\when( 'sanitize_text_field' )->returnArg( 1 );

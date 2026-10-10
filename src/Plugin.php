@@ -13,6 +13,9 @@ use GenReady\Compat\Caches;
 use GenReady\Connection\OAuth;
 use GenReady\Connection\SiteSetup;
 use GenReady\Connection\TokenStore;
+use GenReady\Fixes\FileWriter;
+use GenReady\Fixes\FixStore;
+use GenReady\Fixes\RobotsFix;
 use GenReady\Verification\MetaTag;
 
 defined( 'ABSPATH' ) || exit;
@@ -69,6 +72,24 @@ final class Plugin {
 	 * @var SiteSetup|null
 	 */
 	private $site_setup = null;
+	/**
+	 * Fix storage.
+	 *
+	 * @var FixStore|null
+	 */
+	private $fixes = null;
+	/**
+	 * Files in the site root.
+	 *
+	 * @var FileWriter|null
+	 */
+	private $files = null;
+	/**
+	 * The robots.txt fix.
+	 *
+	 * @var RobotsFix|null
+	 */
+	private $robots = null;
 
 	/**
 	 * Return the single instance.
@@ -99,6 +120,22 @@ final class Plugin {
 		$this->caches     = new Caches();
 		$this->site_setup = new SiteSetup( $this->store, $this->client, $this->meta_tag, $this->caches );
 		add_action( 'wp_head', array( $this->meta_tag, 'render' ), 1 );
+
+		$this->fixes = new FixStore();
+		$this->files = new FileWriter();
+		// The domain ID is read only when a preview runs, so serving robots.txt never decrypts the connection.
+		$this->robots = new RobotsFix(
+			$this->fixes,
+			$this->files,
+			$this->client,
+			$this->caches,
+			function (): string {
+				$connection = $this->store->load();
+				$domain_id  = is_array( $connection ) ? ( $connection['domain_id'] ?? '' ) : '';
+				return is_string( $domain_id ) ? $domain_id : '';
+			}
+		);
+		add_filter( 'robots_txt', array( $this->robots, 'filter' ), PHP_INT_MAX, 2 );
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_init', array( $this, 'maybe_handle_oauth_callback' ) );
@@ -151,6 +188,27 @@ final class Plugin {
 	 */
 	public function site_setup(): SiteSetup {
 		return $this->site_setup;
+	}
+
+	/**
+	 * Fix storage.
+	 */
+	public function fixes(): FixStore {
+		return $this->fixes;
+	}
+
+	/**
+	 * Files in the site root.
+	 */
+	public function files(): FileWriter {
+		return $this->files;
+	}
+
+	/**
+	 * The robots.txt fix.
+	 */
+	public function robots(): RobotsFix {
+		return $this->robots;
 	}
 
 	/**
