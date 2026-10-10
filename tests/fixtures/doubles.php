@@ -34,6 +34,8 @@ class FakeClient extends Client {
 	public $forms = array();
 	/** @var array */
 	public $requests = array();
+	/** @var callable|null Runs inside request(), before the answer, to simulate a racing request. */
+	public $on_request = null;
 
 	public function __construct() {
 	}
@@ -45,6 +47,9 @@ class FakeClient extends Client {
 
 	public function request( string $method, string $path, ?array $body = null, int $timeout = 15 ) {
 		$this->requests[] = array( $method, $path, $body );
+		if ( null !== $this->on_request ) {
+			call_user_func( $this->on_request );
+		}
 		return $this->request_result;
 	}
 }

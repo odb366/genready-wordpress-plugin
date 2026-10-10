@@ -2,8 +2,10 @@
  * GenReady admin page.
  *
  * Every call goes through wp.apiFetch, which sends the wp_rest nonce. Text
- * from the server is set with textContent only. Buttons are disabled while
- * their call runs, and the result message gets the focus.
+ * from the server is set with textContent only. While a call of a fix card
+ * runs, every action of that card is disabled; while a connect, verify or
+ * scan call runs, every connection action is disabled. The result message
+ * gets the focus.
  */
 ( function () {
 	'use strict';
@@ -26,6 +28,7 @@
 	var PLAN_CODES = [ 'PLAN_REQUIRED', 'DOMAIN_LIMIT_REACHED', 'CREDITS_EXHAUSTED' ];
 	var WRITE_CODES = [ 'CANNOT_WRITE', 'WRITE_FAILED' ];
 	var FILE_NAMES = { robots: 'robots.txt', llms: 'llms.txt' };
+	var CONNECTION_ACTIONS = [ 'connect', 'verify', 'scan', 'disconnect', 'remove-tag' ];
 	var FIELD_LABELS = {
 		headline: __( 'Headline', 'genready' ),
 		name: __( 'Name', 'genready' ),
@@ -123,7 +126,7 @@
 		button.addEventListener( 'click', function () {
 			busy( button, function () {
 				return verify( region );
-			} );
+			}, connectionButtons );
 		} );
 		return button;
 	}
@@ -140,29 +143,98 @@
 	}
 
 	/**
-	 * Run a call with the button disabled.
+	 * Disable buttons while a call runs. Locks nest: a button comes back only
+	 * when its last lock ends, and then in the state it had before, or the
+	 * state setDisabled() asked for during the call.
 	 *
-	 * @param {HTMLButtonElement} button The button that started the call.
-	 * @param {Function}          task   Returns a promise.
+	 * @param {HTMLButtonElement[]} buttons Buttons to disable.
 	 */
-	async function busy( button, task ) {
-		button.disabled = true;
+	function lock( buttons ) {
+		buttons.forEach( function ( button ) {
+			var depth = Number( button.getAttribute( 'data-genready-locks' ) || '0' );
+			if ( depth === 0 ) {
+				button.setAttribute( 'data-genready-was-disabled', button.disabled ? '1' : '0' );
+				button.disabled = true;
+			}
+			button.setAttribute( 'data-genready-locks', String( depth + 1 ) );
+		} );
+	}
+
+	/**
+	 * End one lock on each button.
+	 *
+	 * @param {HTMLButtonElement[]} buttons Buttons that lock() disabled.
+	 */
+	function unlock( buttons ) {
+		buttons.forEach( function ( button ) {
+			var depth = Number( button.getAttribute( 'data-genready-locks' ) || '0' ) - 1;
+			if ( depth > 0 ) {
+				button.setAttribute( 'data-genready-locks', String( depth ) );
+				return;
+			}
+			button.disabled = button.getAttribute( 'data-genready-was-disabled' ) === '1';
+			button.removeAttribute( 'data-genready-locks' );
+			button.removeAttribute( 'data-genready-was-disabled' );
+		} );
+	}
+
+	/**
+	 * Enable or disable a button. While the button is locked, the state is
+	 * kept and set when the lock ends.
+	 *
+	 * @param {HTMLButtonElement} button The button.
+	 * @param {boolean}           value  True to disable.
+	 */
+	function setDisabled( button, value ) {
+		if ( button.hasAttribute( 'data-genready-locks' ) ) {
+			button.setAttribute( 'data-genready-was-disabled', value ? '1' : '0' );
+			return;
+		}
+		button.disabled = value;
+	}
+
+	/** Every action button of a fix card. */
+	function cardButtons( card ) {
+		return Array.prototype.slice.call( card.querySelectorAll( '[data-genready-action]' ) );
+	}
+
+	/** Every connect, verify, scan and connection button on the page. */
+	function connectionButtons() {
+		var selector = CONNECTION_ACTIONS.map( function ( action ) {
+			return '[data-genready-action="' + action + '"]';
+		} ).join( ',' ) + ',#genready-key-form button[type="submit"]';
+		return Array.prototype.slice.call( root.querySelectorAll( selector ) );
+	}
+
+	/**
+	 * Run a call with its button and the button's group disabled.
+	 *
+	 * @param {HTMLButtonElement} button  The button that started the call.
+	 * @param {Function}          task    Returns a promise.
+	 * @param {Function}          [group] Returns the other buttons to disable.
+	 */
+	async function busy( button, task, group ) {
+		var buttons = group ? group() : [];
+		if ( buttons.indexOf( button ) === -1 ) {
+			buttons.push( button );
+		}
+		lock( buttons );
 		button.setAttribute( 'aria-busy', 'true' );
 		try {
 			return await task();
 		} finally {
-			button.disabled = false;
+			unlock( buttons );
 			button.removeAttribute( 'aria-busy' );
 		}
 	}
 
-	function onAction( scope, action, handler ) {
+	function onAction( scope, action, handler, group ) {
 		scope.querySelectorAll( '[data-genready-action="' + action + '"]' ).forEach( function ( button ) {
 			button.addEventListener( 'click', function ( event ) {
 				event.preventDefault();
 				busy( button, function () {
 					return handler( button );
-				} );
+				}, group );
 			} );
 		} );
 	}
@@ -222,7 +294,7 @@
 			retry.addEventListener( 'click', function () {
 				busy( retry, function () {
 					return verify( region );
-				} );
+				}, connectionButtons );
 			} );
 			var detail = result && typeof result.detail === 'string' && result.detail ? result.detail : __( 'GenReady did not find the verification tag on your home page.', 'genready' );
 			say( region, detail, 'warning', retry );
@@ -300,7 +372,7 @@
 			} catch ( error ) {
 				showError( region, error );
 			}
-		} );
+		}, connectionButtons );
 
 		root.querySelectorAll( '[data-genready-action="show-key"]' ).forEach( function ( toggle ) {
 			toggle.addEventListener( 'click', function () {
@@ -329,7 +401,7 @@
 					} catch ( error ) {
 						showError( region, error );
 					}
-				} );
+				}, connectionButtons );
 			} );
 		}
 	}
@@ -339,7 +411,7 @@
 	function initOverview() {
 		onAction( root, 'scan', function () {
 			return scan( setupLine( 'scan' ) );
-		} );
+		}, connectionButtons );
 
 		var toggles = root.querySelectorAll( '[data-genready-view]' );
 		toggles.forEach( function ( button ) {
@@ -500,7 +572,7 @@
 		} );
 		versions.hidden = ! list.firstChild;
 
-		cardAction( card, 'undo' ).disabled = ! info.applied;
+		setDisabled( cardAction( card, 'undo' ), ! info.applied );
 		var check = cardAction( card, 'live-check' );
 		if ( check ) {
 			check.hidden = ! info.live_check;
@@ -542,6 +614,9 @@
 		var result = field( card, 'result' );
 		var apply = cardAction( card, 'apply' );
 		var path = '/fixes/' + kind + '/';
+		var group = function () {
+			return cardButtons( card );
+		};
 
 		onAction( card, 'preview', async function () {
 			apply.hidden = true;
@@ -554,7 +629,7 @@
 				field( card, 'preview' ).hidden = true;
 				showError( result, error );
 			}
-		} );
+		}, group );
 
 		onAction( card, 'apply', async function () {
 			try {
@@ -570,7 +645,7 @@
 				}
 				showError( result, error );
 			}
-		} );
+		}, group );
 
 		onAction( card, 'download', async function () {
 			try {
@@ -584,7 +659,7 @@
 			} catch ( error ) {
 				showError( result, error );
 			}
-		} );
+		}, group );
 
 		onAction( card, 'undo', async function () {
 			try {
@@ -596,7 +671,7 @@
 			} catch ( error ) {
 				showError( result, error );
 			}
-		} );
+		}, group );
 
 		onAction( card, 'live-check', async function () {
 			try {
@@ -607,7 +682,7 @@
 			} catch ( error ) {
 				showError( result, error );
 			}
-		} );
+		}, group );
 
 		onAction( card, 'as-file', async function () {
 			try {
@@ -618,7 +693,7 @@
 			} catch ( error ) {
 				showError( result, error );
 			}
-		} );
+		}, group );
 	}
 
 	/* ---------- Connection tab ---------- */
@@ -632,7 +707,7 @@
 
 		onAction( section, 'verify', function () {
 			return verify( region );
-		} );
+		}, connectionButtons );
 
 		onAction( section, 'disconnect', async function () {
 			// eslint-disable-next-line no-alert
@@ -646,7 +721,7 @@
 			} catch ( error ) {
 				showError( region, error );
 			}
-		} );
+		}, connectionButtons );
 
 		onAction( section, 'remove-tag', async function ( button ) {
 			try {
@@ -656,7 +731,7 @@
 			} catch ( error ) {
 				showError( region, error );
 			}
-		} );
+		}, connectionButtons );
 	}
 
 	/* ---------- Start ---------- */
@@ -667,7 +742,11 @@
 	initConnection();
 
 	if ( data.justConnected ) {
-		afterConnect();
+		var starting = connectionButtons();
+		lock( starting );
+		afterConnect().finally( function () {
+			unlock( starting );
+		} );
 	} else if ( data.reportState === 'pending' ) {
 		poll( setupLine( 'scan' ) );
 	}

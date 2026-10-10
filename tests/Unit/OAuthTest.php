@@ -3,13 +3,17 @@ namespace GenReady\Tests\Unit;
 
 use Brain\Monkey;
 use GenReady\Api\ApiError;
+use GenReady\Api\Client;
 use GenReady\Connection\OAuth;
 use GenReady\Connection\TokenStore;
 use PHPUnit\Framework\TestCase;
 
 require_once dirname( __DIR__ ) . '/fixtures/doubles.php';
+require_once dirname( __DIR__ ) . '/fixtures/http-doubles.php';
 
 class OAuthTest extends TestCase {
+	use ScriptedHttp;
+
 	/** @var array */
 	private $options = array();
 	/** @var TokenStore */
@@ -221,5 +225,36 @@ class OAuthTest extends TestCase {
 		$this->oauth()->revoke();
 		$this->assertSame( array(), $this->client->forms );
 		$this->assertNull( $this->store->load() );
+	}
+
+	// Fix round A, G2: never save a record loaded before a call that can refresh.
+
+	public function test_callback_keeps_the_tokens_a_refresh_rotated_during_the_domains_call(): void {
+		$this->pending();
+		$store  = new LockableStore( true );
+		$oauth  = null;
+		$client = new Client(
+			$store,
+			function () use ( &$oauth ): bool {
+				return $oauth->refresh();
+			}
+		);
+		$oauth  = new OAuth( $store, $client );
+		$this->scripted_http(
+			array(
+				array( 200, $this->tokens() ),
+				array( 401, array( 'error' => array( 'code' => 'UNAUTHORIZED', 'message' => 'expired' ) ) ),
+				array( 200, array( 'access_token' => 'A2', 'refresh_token' => 'R2', 'expires_in' => 3600 ) ),
+				array( 200, array( 'data' => array( 'domain' => array( 'id' => 'd1', 'verificationToken' => 't1' ) ) ) ),
+			)
+		);
+		$this->assertSame( array( 'ok' => true ), $oauth->handle_callback( 7, array( 'state' => 'right', 'code' => 'c' ) ) );
+		$this->assertSame( 'Bearer A1', $this->bearer( 1 ) );
+		$this->assertSame( 'Bearer A2', $this->bearer( 3 ) );
+		$saved = $store->load();
+		$this->assertSame( 'A2', $saved['access_token'] );
+		$this->assertSame( 'R2', $saved['refresh_token'] );
+		$this->assertSame( 't1', $saved['verification_token'] );
+		$this->assertSame( 'd1', $saved['domain_id'] );
 	}
 }

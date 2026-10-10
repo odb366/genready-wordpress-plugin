@@ -603,4 +603,30 @@ class RestTest extends TestCase {
 		$this->assertTrue( $cards->card( 'llms' )['as_file'] );
 		$this->assertFalse( $cards->card( 'robots' )['as_file'] );
 	}
+
+	public function test_live_check_drops_the_result_when_the_fix_was_undone_during_the_call(): void {
+		$this->connect();
+		$this->fixes->put( 'robots', array( 'mode' => 'virtual', 'content' => 'X', 'base_sha256' => str_repeat( 'a', 64 ), 'status' => 'applied' ) );
+		$this->client->on_request     = function () {
+			$this->fixes->remove( 'robots' );
+		};
+		$this->client->request_result = array( 'status' => 200, 'match' => true, 'cache' => array( 'age' => null, 'cfCacheStatus' => null ) );
+		$result                       = $this->fix( $this->rest(), 'robots', 'live-check' );
+		$this->assertTrue( $result['ok'] );
+		$this->assertSame( array(), $this->fixes->get( 'robots' ), 'the undone record stays removed' );
+		$this->assertFalse( $result['card']['applied'] );
+	}
+
+	public function test_live_check_drops_the_result_when_the_fix_changed_during_the_call(): void {
+		$this->connect();
+		$this->fixes->put( 'llms', array( 'mode' => 'virtual', 'content' => 'OLD', 'base_sha256' => str_repeat( 'a', 64 ), 'status' => 'applied' ) );
+		$this->client->on_request     = function () {
+			$this->fixes->put( 'llms', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => str_repeat( 'b', 64 ), 'status' => 'applied' ) );
+		};
+		$this->client->request_result = array( 'status' => 200, 'match' => true, 'cache' => array( 'age' => null, 'cfCacheStatus' => null ) );
+		$this->fix( $this->rest(), 'llms', 'live-check' );
+		$record = $this->fixes->get( 'llms' );
+		$this->assertSame( 'NEW', $record['content'] );
+		$this->assertArrayNotHasKey( 'live', $record, 'a result for OLD must not be stored on NEW' );
+	}
 }

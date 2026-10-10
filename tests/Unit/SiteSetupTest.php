@@ -3,15 +3,20 @@ namespace GenReady\Tests\Unit;
 
 use Brain\Monkey;
 use GenReady\Api\ApiError;
+use GenReady\Api\Client;
 use GenReady\Compat\Caches;
+use GenReady\Connection\OAuth;
 use GenReady\Connection\SiteSetup;
 use GenReady\Connection\TokenStore;
 use GenReady\Verification\MetaTag;
 use PHPUnit\Framework\TestCase;
 
 require_once dirname( __DIR__ ) . '/fixtures/doubles.php';
+require_once dirname( __DIR__ ) . '/fixtures/http-doubles.php';
 
 class SiteSetupTest extends TestCase {
+	use ScriptedHttp;
+
 	/** @var array */
 	private $options = array();
 	/** @var array */
@@ -121,5 +126,47 @@ class SiteSetupTest extends TestCase {
 		$this->client->request_result = new ApiError( 402, 'CREDITS_EXHAUSTED', '' );
 		$this->assertSame( array( 'error' => 'Your GenReady plan has no scans left for now.', 'code' => 'CREDITS_EXHAUSTED', 'status' => 402 ), $this->setup_object()->scan() );
 		$this->assertArrayNotHasKey( 'genready_settings', $this->options );
+	}
+
+	// Fix round A, G2: never save a record loaded before a call that can refresh.
+
+	public function test_verify_keeps_the_tokens_a_refresh_rotated_while_fetching_the_token(): void {
+		$store = new LockableStore( true );
+		$store->save( array( 'method' => 'oauth', 'access_token' => 'A1', 'refresh_token' => 'R1', 'client_id' => 'cid', 'domain_id' => 'd1' ) );
+		$oauth  = null;
+		$client = new Client(
+			$store,
+			function () use ( &$oauth ): bool {
+				return $oauth->refresh();
+			}
+		);
+		$oauth  = new OAuth( $store, $client );
+		$this->scripted_http(
+			array(
+				array( 401, array( 'error' => array( 'code' => 'UNAUTHORIZED', 'message' => 'expired' ) ) ),
+				array( 200, array( 'access_token' => 'A2', 'refresh_token' => 'R2', 'expires_in' => 3600 ) ),
+				array( 200, array( 'data' => array( 'domain' => array( 'id' => 'd1', 'verificationToken' => 'fetched12345' ) ) ) ),
+				array( 200, array( 'data' => array( 'verified' => true, 'detail' => '' ) ) ),
+			)
+		);
+		$result = ( new SiteSetup( $store, $client, new MetaTag(), new Caches() ) )->verify();
+		$this->assertTrue( $result['verified'] );
+		$this->assertSame( 'Bearer A2', $this->bearer( 3 ) );
+		$saved = $store->load();
+		$this->assertSame( 'A2', $saved['access_token'] );
+		$this->assertSame( 'R2', $saved['refresh_token'] );
+		$this->assertSame( 'fetched12345', $saved['verification_token'] );
+	}
+
+	public function test_verify_does_not_bring_back_a_connection_that_ended_during_the_token_call(): void {
+		$this->connect( array( 'verification_token' => '' ) );
+		$this->client->on_request     = function () {
+			$this->store->clear();
+		};
+		$this->client->request_result = array( 'domain' => array( 'id' => 'd1', 'verificationToken' => 'fetched12345' ) );
+		$result                       = $this->setup_object()->verify();
+		$this->assertSame( 'Reconnect GenReady.', $result['error'] );
+		$this->assertNull( $this->store->load() );
+		$this->assertCount( 1, $this->client->requests );
 	}
 }

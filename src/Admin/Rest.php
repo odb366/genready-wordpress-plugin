@@ -480,6 +480,8 @@ final class Rest {
 
 	/**
 	 * Ask GenReady whether the live file is the applied file, and keep the answer in the fix record.
+	 * The answer is stored only when the record still holds the same file after the call: an undo
+	 * or a new apply during the call wins.
 	 *
 	 * @param string $kind Fix kind.
 	 * @return array|\WP_Error
@@ -510,6 +512,14 @@ final class Rest {
 		if ( $result instanceof ApiError ) {
 			return $this->api_error( $result );
 		}
+		$fresh = $this->cards->store()->get( $kind );
+		$same  = ( $fresh['mode'] ?? null ) === ( $record['mode'] ?? null )
+			&& is_string( $fresh['content'] ?? null )
+			&& hash_equals( hash( 'sha256', $content ), hash( 'sha256', $fresh['content'] ) );
+		if ( ! $same ) {
+			return $this->done( $kind );
+		}
+		$record            = $fresh;
 		$cache             = is_array( $result['cache'] ?? null ) ? $result['cache'] : array();
 		$record['live']    = array(
 			'status' => is_int( $result['status'] ?? null ) ? $result['status'] : null,

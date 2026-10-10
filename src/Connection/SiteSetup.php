@@ -131,6 +131,8 @@ final class SiteSetup {
 
 	/**
 	 * Ask GenReady for the verification token and keep it with the connection.
+	 * The call can refresh the OAuth tokens, so the token goes into the
+	 * connection as stored after the call, never into the copy read before it.
 	 *
 	 * @param array $connection Stored connection.
 	 * @return string|array The token, or array( 'error' => string ).
@@ -145,7 +147,13 @@ final class SiteSetup {
 		if ( ! MetaTag::is_valid( $token ) ) {
 			return array( 'error' => __( 'GenReady could not do this. Try again.', 'genready' ) );
 		}
-		$this->store->save( array_merge( $connection, array( 'verification_token' => $token ) ) );
+		$fresh = $this->store->load();
+		if ( ! is_array( $fresh ) || ( $fresh['domain_id'] ?? null ) !== ( $connection['domain_id'] ?? null ) ) {
+			// The connection ended or changed during the call.
+			return array( 'error' => __( 'Reconnect GenReady.', 'genready' ) );
+		}
+		$fresh['verification_token'] = $token;
+		$this->store->save( $fresh );
 		return $token;
 	}
 

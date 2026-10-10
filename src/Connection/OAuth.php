@@ -177,9 +177,14 @@ final class OAuth {
 			);
 		}
 		$info = is_array( $domain['domain'] ?? null ) ? $domain['domain'] : array();
-		if ( ( $info['id'] ?? null ) === $connection['domain_id'] && is_string( $info['verificationToken'] ?? null ) && '' !== $info['verificationToken'] ) {
-			$connection['verification_token'] = sanitize_text_field( $info['verificationToken'] );
-			$this->store->save( $connection );
+		if ( ( $info['id'] ?? null ) !== $connection['domain_id'] || ! is_string( $info['verificationToken'] ?? null ) || '' === $info['verificationToken'] ) {
+			return array( 'ok' => true );
+		}
+		// The call can refresh the tokens, so add the verification token to the connection as stored now.
+		$fresh = $this->store->load();
+		if ( is_array( $fresh ) && ( $fresh['domain_id'] ?? null ) === $connection['domain_id'] ) {
+			$fresh['verification_token'] = sanitize_text_field( $info['verificationToken'] );
+			$this->store->save( $fresh );
 		}
 		return array( 'ok' => true );
 	}
