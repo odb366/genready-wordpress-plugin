@@ -200,4 +200,34 @@ class ViewsTest extends TestCase {
 		$html            = Page::view( 'fixes', array( 'connected' => true, 'cards' => array( $llms ) ) );
 		$this->assertStringContainsString( 'data-genready-action="as-file">', $html );
 	}
+
+	// Fix round A, G5 L3: the screenshot comes only from GenReady's own host.
+
+	/**
+	 * @dataProvider screenshot_urls
+	 */
+	public function test_screenshot_url_must_come_from_the_api_host( string $url, string $base, ?string $expected ): void {
+		$this->assertSame( $expected, Reports::screenshot_url( $url, $base ) );
+	}
+
+	public function screenshot_urls(): array {
+		return array(
+			'same host, https'          => array( 'https://genready.ai/screenshots/a.png', 'https://genready.ai', 'https://genready.ai/screenshots/a.png' ),
+			'host case'                 => array( 'https://GenReady.ai/a.png', 'https://genready.ai', 'https://GenReady.ai/a.png' ),
+			'other host'                => array( 'https://evil.example/a.png', 'https://genready.ai', null ),
+			'look-alike host'           => array( 'https://genready.ai.evil.example/a.png', 'https://genready.ai', null ),
+			'http on an https base'     => array( 'http://genready.ai/a.png', 'https://genready.ai', null ),
+			'http on an http base'      => array( 'http://127.0.0.1:5002/a.png', 'http://127.0.0.1:5002', 'http://127.0.0.1:5002/a.png' ),
+			'https on an http base'     => array( 'https://127.0.0.1/a.png', 'http://127.0.0.1:5002', 'https://127.0.0.1/a.png' ),
+			'javascript'                => array( 'javascript:alert(1)', 'https://genready.ai', null ),
+			'no host'                   => array( '/a.png', 'https://genready.ai', null ),
+		);
+	}
+
+	public function test_report_drops_a_screenshot_from_another_host(): void {
+		$fixture                            = report_fixture();
+		$fixture['aiView']['screenshotUrl'] = 'https://evil.example/a.png';
+		$this->assertNull( Reports::summarize( $fixture )['ai_view']['screenshot'] );
+		$this->assertSame( 'https://genready.ai/screenshots/a.png', Reports::summarize( report_fixture() )['ai_view']['screenshot'] );
+	}
 }

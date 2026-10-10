@@ -137,4 +137,46 @@ class PluginTest extends TestCase {
 		\GenReady\Plugin::instance()->boot();
 		$this->assertTrue( true );
 	}
+
+	// Fix round A, G5 L5: the client document is public only while it is needed.
+
+	private function booted_with_options( array &$options ): \GenReady\Plugin {
+		Monkey\Functions\when( 'add_action' )->justReturn( true );
+		Monkey\Functions\when( 'add_filter' )->justReturn( true );
+		Monkey\Functions\when( 'get_option' )->alias( function ( $k, $d = false ) use ( &$options ) { return $options[ $k ] ?? $d; } );
+		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v ) use ( &$options ) { $options[ $k ] = $v; return true; } );
+		Monkey\Functions\when( 'wp_salt' )->justReturn( str_repeat( 's', 64 ) );
+		Monkey\Functions\when( '__' )->returnArg( 1 );
+		Monkey\Functions\when( 'rest_url' )->justReturn( 'https://example.com/wp-json/genready/v1/client' );
+		Monkey\Functions\when( 'admin_url' )->justReturn( 'https://example.com/wp-admin/admin.php?page=genready&genready_cb=1' );
+		Monkey\Functions\when( 'home_url' )->justReturn( 'https://example.com' );
+		$plugin = \GenReady\Plugin::instance();
+		$plugin->boot();
+		return $plugin;
+	}
+
+	public function test_client_document_is_404_when_no_connection_is_pending(): void {
+		$options = array();
+		$plugin  = $this->booted_with_options( $options );
+		foreach ( array( null, time() - 901, 'x' ) as $pending ) {
+			$options['genready_oauth_pending'] = $pending;
+			$result                            = $plugin->serve_client_document();
+			$this->assertInstanceOf( \WP_Error::class, $result );
+			$this->assertSame( 'rest_no_route', $result->get_error_code() );
+			$this->assertSame( array( 'status' => 404 ), $result->get_error_data() );
+		}
+	}
+
+	public function test_client_document_is_served_during_a_connect_and_while_connected(): void {
+		$options = array( 'genready_oauth_pending' => time() - 60 );
+		$plugin  = $this->booted_with_options( $options );
+		$result  = $plugin->serve_client_document();
+		$this->assertInstanceOf( \WP_REST_Response::class, $result );
+		$this->assertSame( 'https://example.com/wp-json/genready/v1/client', $result->get_data()['client_id'] );
+
+		$options = array();
+		$plugin  = $this->booted_with_options( $options );
+		( new \GenReady\Connection\TokenStore() )->save( array( 'method' => 'oauth', 'access_token' => 'A', 'refresh_token' => 'R', 'domain_id' => 'd1' ) );
+		$this->assertInstanceOf( \WP_REST_Response::class, $plugin->serve_client_document() );
+	}
 }

@@ -53,6 +53,10 @@ class Client {
 	 * @return array|ApiError The `data` of the response, or an error.
 	 */
 	public function request( string $method, string $path, ?array $body = null, int $timeout = 15 ) {
+		$insecure = $this->insecure_base();
+		if ( null !== $insecure ) {
+			return $insecure;
+		}
 		$result = $this->send( $method, $path, $body, $timeout );
 		if ( $result instanceof ApiError && 401 === $result->status && $this->can_refresh() ) {
 			if ( call_user_func( $this->refresh ) ) {
@@ -74,6 +78,10 @@ class Client {
 	 * @return array|ApiError Decoded JSON, without an envelope, or an error.
 	 */
 	public function post_form( string $path, array $form, int $timeout = 15 ) {
+		$insecure = $this->insecure_base();
+		if ( null !== $insecure ) {
+			return $insecure;
+		}
 		$args     = array(
 			'method'      => 'POST',
 			'timeout'     => min( $timeout, self::FORM_MAX_TIMEOUT ),
@@ -86,7 +94,7 @@ class Client {
 			),
 			'body'        => http_build_query( $form ),
 		);
-		$response = wp_remote_request( GENREADY_API_BASE . $path, $args );
+		$response = wp_remote_request( $this->api_base() . $path, $args );
 		if ( is_wp_error( $response ) ) {
 			return new ApiError( null, 'TIMEOUT', $response->get_error_message() );
 		}
@@ -102,6 +110,25 @@ class Client {
 			is_string( $error ) && '' !== $error ? $error : 'HTTP_' . $status,
 			is_string( $description ) ? $description : ''
 		);
+	}
+
+	/**
+	 * The GenReady address. A method, so tests can use another one.
+	 */
+	protected function api_base(): string {
+		return GENREADY_API_BASE;
+	}
+
+	/**
+	 * The error for an address without HTTPS, or null. Plain HTTP is allowed
+	 * only on a local or development site, so tokens never travel unencrypted
+	 * from a live site.
+	 */
+	private function insecure_base(): ?ApiError {
+		if ( 0 === stripos( $this->api_base(), 'https://' ) ) {
+			return null;
+		}
+		return in_array( wp_get_environment_type(), array( 'local', 'development' ), true ) ? null : new ApiError( null, 'INSECURE_BASE', '' );
 	}
 
 	/**
@@ -142,7 +169,7 @@ class Client {
 		if ( null !== $body ) {
 			$args['body'] = wp_json_encode( $body );
 		}
-		$response = wp_remote_request( GENREADY_API_BASE . $path, $args );
+		$response = wp_remote_request( $this->api_base() . $path, $args );
 		if ( is_wp_error( $response ) ) {
 			return new ApiError( null, 'TIMEOUT', $response->get_error_message() );
 		}

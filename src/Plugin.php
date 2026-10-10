@@ -274,10 +274,29 @@ final class Plugin {
 	}
 
 	/**
-	 * Answer the client document request.
+	 * Answer the client document request. GenReady fetches it while a connect
+	 * flow runs (authorize and token exchange) and later on each refresh, so it
+	 * is served while the site is connected or a connect flow started in the
+	 * last 15 minutes. Otherwise the route answers like a missing one.
+	 *
+	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function serve_client_document(): \WP_REST_Response {
+	public function serve_client_document() {
+		if ( ! $this->client_document_needed() ) {
+			return new \WP_Error( 'rest_no_route', __( 'No route was found matching the URL and request method.', 'genready' ), array( 'status' => 404 ) );
+		}
 		return new \WP_REST_Response( $this->oauth->client_document(), 200, array( 'Cache-Control' => 'public, max-age=300' ) );
+	}
+
+	/**
+	 * Tell whether GenReady may need the client document now.
+	 */
+	private function client_document_needed(): bool {
+		if ( null !== $this->store->load() ) {
+			return true;
+		}
+		$since = get_option( OAuth::PENDING_OPTION );
+		return is_numeric( $since ) && abs( time() - (int) $since ) <= OAuth::PENDING_TTL;
 	}
 
 	/**

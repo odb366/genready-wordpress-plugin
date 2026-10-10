@@ -218,4 +218,61 @@ class ClientTest extends TestCase {
 		Monkey\Functions\when( 'wp_remote_request' )->justReturn( new \WP_Error( 'http_request_failed', 'timed out' ) );
 		$this->assertSame( 'TIMEOUT', ( new Client( $this->store ) )->post_form( '/oauth/token', array() )->code );
 	}
+
+	// Fix round A, G5 L6: an API address without HTTPS works only on a local or development site.
+
+	private function client_for( string $base ): Client {
+		$client       = new class( $this->store ) extends Client {
+			/** @var string */
+			public $base = '';
+			protected function api_base(): string {
+				return $this->base;
+			}
+		};
+		$client->base = $base;
+		return $client;
+	}
+
+	/**
+	 * @dataProvider production_types
+	 */
+	public function test_http_base_is_refused_on_a_live_site( string $type ): void {
+		$this->connect( array( 'method' => 'api_key', 'api_key' => 'k' ) );
+		Monkey\Functions\when( 'wp_get_environment_type' )->justReturn( $type );
+		$calls = 0;
+		Monkey\Functions\when( 'wp_remote_request' )->alias( function () use ( &$calls ) { ++$calls; return $this->response( 200, array( 'data' => array() ) ); } );
+		$client = $this->client_for( 'http://genready.example' );
+		foreach ( array( $client->request( 'GET', '/api/v1/usage' ), $client->post_form( '/oauth/token', array() ) ) as $result ) {
+			$this->assertInstanceOf( ApiError::class, $result );
+			$this->assertNull( $result->status );
+			$this->assertSame( 'INSECURE_BASE', $result->code );
+			$this->assertSame( "GenReady's address must use HTTPS.", $result->user_message() );
+		}
+		$this->assertSame( 0, $calls );
+	}
+
+	public function production_types(): array {
+		return array(
+			'production' => array( 'production' ),
+			'staging'    => array( 'staging' ),
+		);
+	}
+
+	public function test_http_base_works_on_a_local_or_development_site(): void {
+		$this->connect( array( 'method' => 'api_key', 'api_key' => 'k' ) );
+		$urls = array();
+		Monkey\Functions\when( 'wp_remote_request' )->alias( function ( $url ) use ( &$urls ) { $urls[] = $url; return $this->response( 200, array( 'data' => array( 'ok' => 1 ) ) ); } );
+		foreach ( array( 'local', 'development' ) as $type ) {
+			Monkey\Functions\when( 'wp_get_environment_type' )->justReturn( $type );
+			$this->assertSame( array( 'ok' => 1 ), $this->client_for( 'http://127.0.0.1:5002' )->request( 'GET', '/api/v1/usage' ) );
+		}
+		$this->assertSame( array( 'http://127.0.0.1:5002/api/v1/usage', 'http://127.0.0.1:5002/api/v1/usage' ), $urls );
+	}
+
+	public function test_https_base_never_asks_for_the_environment(): void {
+		$this->connect( array( 'method' => 'api_key', 'api_key' => 'k' ) );
+		Monkey\Functions\expect( 'wp_get_environment_type' )->never();
+		Monkey\Functions\when( 'wp_remote_request' )->justReturn( $this->response( 200, array( 'data' => array( 'ok' => 1 ) ) ) );
+		$this->assertSame( array( 'ok' => 1 ), $this->client_for( 'https://genready.ai' )->request( 'GET', '/x' ) );
+	}
 }

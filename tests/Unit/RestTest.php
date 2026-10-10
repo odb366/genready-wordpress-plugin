@@ -651,4 +651,15 @@ class RestTest extends TestCase {
 		$this->assertStringContainsString( 'Preview again', $card['message'] );
 		$this->assertSame( 'applied', $this->fixes->get( 'robots' )['status'], 'the card writes nothing' );
 	}
+
+	// Fix round A, G5 L7.
+
+	public function test_connect_oauth_refuses_while_connected(): void {
+		$this->connect();
+		Monkey\Functions\when( 'wp_generate_password' )->justReturn( str_repeat( 'k', 32 ) );
+		$result = $this->rest()->connect_oauth( new FakeRequest( array( 'send_email' => false ) ) );
+		$this->assert_error( $result, 'Disconnect GenReady first.' );
+		$this->assertSame( array(), $this->transients );
+		$this->assertSame( 'd1', $this->store->load()['domain_id'] );
+	}
 }

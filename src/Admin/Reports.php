@@ -313,15 +313,37 @@ class Reports {
 	 * @return array array( 'markdown' => string|null, 'truncated' => bool, 'screenshot' => string|null, 'gap' => int|null ).
 	 */
 	private static function ai_view( $view ): array {
-		$view       = is_array( $view ) ? $view : array();
-		$screenshot = is_string( $view['screenshotUrl'] ?? null ) ? esc_url_raw( $view['screenshotUrl'], array( 'https', 'http' ) ) : '';
-		$gap        = is_array( $view['jsGap'] ?? null ) ? ( $view['jsGap']['gapPercent'] ?? null ) : null;
+		$view = is_array( $view ) ? $view : array();
+		$gap  = is_array( $view['jsGap'] ?? null ) ? ( $view['jsGap']['gapPercent'] ?? null ) : null;
 		return array(
 			'markdown'   => is_string( $view['markdown'] ?? null ) ? $view['markdown'] : null,
 			'truncated'  => true === ( $view['markdownTruncated'] ?? false ),
-			'screenshot' => '' !== $screenshot && 1 === preg_match( '#^https?://#i', $screenshot ) ? $screenshot : null,
+			'screenshot' => is_string( $view['screenshotUrl'] ?? null ) ? self::screenshot_url( $view['screenshotUrl'], GENREADY_API_BASE ) : null,
 			'gap'        => is_numeric( $gap ) ? max( 0, min( 100, (int) round( (float) $gap ) ) ) : null,
 		);
+	}
+
+	/**
+	 * A screenshot URL the page may load: on the GenReady host, over HTTPS, or
+	 * over HTTP only when the GenReady address itself is HTTP (a local server).
+	 *
+	 * @param string $url  URL from the report.
+	 * @param string $base The GenReady address (GENREADY_API_BASE).
+	 * @return string|null The URL, or null when the page must not load it.
+	 */
+	public static function screenshot_url( string $url, string $base ): ?string {
+		$parts = wp_parse_url( $url );
+		$api   = wp_parse_url( $base );
+		if ( ! is_array( $parts ) || ! is_array( $api ) || ! isset( $parts['scheme'], $parts['host'], $api['scheme'], $api['host'] ) ) {
+			return null;
+		}
+		$scheme = strtolower( $parts['scheme'] );
+		$secure = 'https' === $scheme || ( 'http' === $scheme && 'http' === strtolower( $api['scheme'] ) );
+		if ( ! $secure || strtolower( $parts['host'] ) !== strtolower( $api['host'] ) ) {
+			return null;
+		}
+		$clean = esc_url_raw( $url, array( 'https', 'http' ) );
+		return '' === $clean ? null : $clean;
 	}
 
 	/**

@@ -257,4 +257,51 @@ class OAuthTest extends TestCase {
 		$this->assertSame( 't1', $saved['verification_token'] );
 		$this->assertSame( 'd1', $saved['domain_id'] );
 	}
+
+	// Fix round A, G5 L1 and L5.
+
+	/** Pending request for user 7, and a log of the deleted transients and options. */
+	private function tracked_pending(): array {
+		$deleted = array();
+		Monkey\Functions\when( 'get_transient' )->justReturn( array( 'state' => 'right', 'verifier' => 'v' ) );
+		Monkey\Functions\when( 'delete_transient' )->alias( function ( $k ) use ( &$deleted ) { $deleted[] = 'transient:' . $k; return true; } );
+		$this->options['genready_oauth_pending'] = time();
+		$opts                                    = &$this->options;
+		Monkey\Functions\when( 'delete_option' )->alias( function ( $k ) use ( &$opts, &$deleted ) { unset( $opts[ $k ] ); $deleted[] = 'option:' . $k; return true; } );
+		return array( 'deleted' => &$deleted );
+	}
+
+	public function test_a_forged_callback_does_not_cancel_the_pending_connection(): void {
+		$log = $this->tracked_pending();
+		$r   = $this->oauth()->handle_callback( 7, array( 'state' => 'forged', 'error' => 'access_denied' ) );
+		$this->assertSame( 'The connection request expired. Click Connect again.', $r['error'] );
+		$this->assertSame( array(), $log['deleted'] );
+		$this->assertArrayHasKey( 'genready_oauth_pending', $this->options );
+	}
+
+	public function test_a_matching_callback_ends_the_pending_connection(): void {
+		$log = $this->tracked_pending();
+		$this->oauth()->handle_callback( 7, array( 'state' => 'right', 'error' => 'access_denied' ) );
+		$this->assertContains( 'transient:genready_oauth_7', $log['deleted'] );
+		$this->assertArrayNotHasKey( 'genready_oauth_pending', $this->options );
+
+		$log                          = $this->tracked_pending();
+		$this->client->form_result    = $this->tokens();
+		$this->client->request_result = array( 'domain' => array( 'id' => 'd1', 'verificationToken' => 't1' ) );
+		$this->assertSame( array( 'ok' => true ), $this->oauth()->handle_callback( 7, array( 'state' => 'right', 'code' => 'c' ) ) );
+		$this->assertContains( 'transient:genready_oauth_7', $log['deleted'] );
+		$this->assertArrayNotHasKey( 'genready_oauth_pending', $this->options );
+	}
+
+	public function test_authorize_url_marks_a_pending_connection(): void {
+		Monkey\Functions\when( 'set_transient' )->justReturn( true );
+		Monkey\Functions\when( 'wp_generate_password' )->justReturn( str_repeat( 'a', 32 ) );
+		$autoload = null;
+		$opts     = &$this->options;
+		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v, $a = null ) use ( &$opts, &$autoload ) { $opts[ $k ] = $v; $autoload = $a; return true; } );
+		$this->oauth()->authorize_url( 7, false );
+		$this->assertIsInt( $this->options['genready_oauth_pending'] );
+		$this->assertLessThanOrEqual( 2, abs( time() - $this->options['genready_oauth_pending'] ) );
+		$this->assertFalse( $autoload );
+	}
 }

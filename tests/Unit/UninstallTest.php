@@ -68,7 +68,7 @@ class UninstallTest extends TestCase {
 		$this->store->put( 'robots', $this->file_record( 'WRITTEN', 'ORIG' ) );
 		$this->store->put( 'llms', $this->file_record( 'W2', null ) );
 		$this->store->put( 'jsonld_home', array( 'content' => '{}' ) );
-		foreach ( array( 'genready_connection', 'genready_settings', 'genready_meta', 'genready_fixes' ) as $option ) {
+		foreach ( array( 'genready_connection', 'genready_settings', 'genready_meta', 'genready_fixes', 'genready_oauth_pending' ) as $option ) {
 			$this->options[ $option ] = 'x';
 		}
 		$this->db->rows['genready_refresh_lock'] = '123';
@@ -82,7 +82,7 @@ class UninstallTest extends TestCase {
 		$this->assertSame( 'ORIG', $this->files->read( 'robots.txt' ) );
 		$this->assertSame( 'EDITED', $this->files->read( 'llms.txt' ) );
 		$this->assertSame( 1, $revoked );
-		foreach ( array( 'genready_connection', 'genready_fixes', 'genready_fix_robots', 'genready_fix_llms', 'genready_fix_jsonld_home', 'genready_meta', 'genready_settings' ) as $option ) {
+		foreach ( array( 'genready_connection', 'genready_fixes', 'genready_fix_robots', 'genready_fix_llms', 'genready_fix_jsonld_home', 'genready_meta', 'genready_settings', 'genready_oauth_pending' ) as $option ) {
 			$this->assertArrayNotHasKey( $option, $this->options );
 		}
 		$this->assertArrayNotHasKey( 'genready_refresh_lock', $this->db->rows );

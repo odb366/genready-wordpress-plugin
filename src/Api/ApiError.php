@@ -61,6 +61,9 @@ final class ApiError {
 		if ( 'TIMEOUT' === $this->code ) {
 			return __( 'GenReady did not answer. Try again.', 'genready' );
 		}
+		if ( 'INSECURE_BASE' === $this->code ) {
+			return __( "GenReady's address must use HTTPS.", 'genready' );
+		}
 		switch ( $this->status ) {
 			case 401:
 				return __( 'Reconnect GenReady.', 'genready' );

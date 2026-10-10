@@ -24,6 +24,10 @@ final class OAuth {
 	const MAX_TOKEN_LENGTH = 4096;
 	/** Longest error text from the query that we show, in characters. */
 	const MAX_ERROR_LENGTH = 200;
+	/** Option with the time a connect flow started. The client document is public while it is fresh. */
+	const PENDING_OPTION = 'genready_oauth_pending';
+	/** Seconds a started connect flow keeps the client document public. */
+	const PENDING_TTL = 900;
 
 	/**
 	 * Token storage.
@@ -101,6 +105,7 @@ final class OAuth {
 			),
 			600
 		);
+		update_option( self::PENDING_OPTION, time(), false );
 		$args = array(
 			'response_type'         => 'code',
 			'client_id'             => $this->client_id(),
@@ -127,11 +132,28 @@ final class OAuth {
 	 */
 	public function handle_callback( int $user_id, array $query ): array {
 		$pending = get_transient( 'genready_oauth_' . $user_id );
-		delete_transient( 'genready_oauth_' . $user_id );
-		$state = isset( $query['state'] ) && is_string( $query['state'] ) ? sanitize_text_field( $query['state'] ) : '';
+		$state   = isset( $query['state'] ) && is_string( $query['state'] ) ? sanitize_text_field( $query['state'] ) : '';
 		if ( ! is_array( $pending ) || ! is_string( $pending['state'] ?? null ) || ! hash_equals( $pending['state'], $state ) ) {
+			// A forged or late callback must not cancel the admin's pending connection.
 			return array( 'error' => __( 'The connection request expired. Click Connect again.', 'genready' ) );
 		}
+		delete_transient( 'genready_oauth_' . $user_id );
+		try {
+			return $this->finish( $pending, $query );
+		} finally {
+			// After the token exchange: GenReady reads the client document during it.
+			delete_option( self::PENDING_OPTION );
+		}
+	}
+
+	/**
+	 * Exchange the code for tokens and store the connection. The state is checked already.
+	 *
+	 * @param array $pending The PKCE verifier and state of this user.
+	 * @param array $query   The code, error and error_description values.
+	 * @return array array( 'ok' => true ) with an optional 'notice', or array( 'error' => string ).
+	 */
+	private function finish( array $pending, array $query ): array {
 		if ( isset( $query['error'] ) ) {
 			$text = $query['error_description'] ?? $query['error'];
 			$text = is_string( $text ) ? substr( sanitize_text_field( $text ), 0, self::MAX_ERROR_LENGTH ) : '';

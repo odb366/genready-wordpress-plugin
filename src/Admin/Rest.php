@@ -180,9 +180,12 @@ final class Rest {
 	 * Start the OAuth connection: return the URL that sends the admin to GenReady.
 	 *
 	 * @param \WP_REST_Request $request Request.
-	 * @return array array( 'url' => string ).
+	 * @return array|\WP_Error array( 'url' => string ), or an error while a connection exists.
 	 */
-	public function connect_oauth( $request ): array {
+	public function connect_oauth( $request ) {
+		if ( null !== $this->store->load() ) {
+			return $this->error( __( 'Disconnect GenReady first.', 'genready' ), 'CONNECTED' );
+		}
 		return array( 'url' => $this->oauth->authorize_url( get_current_user_id(), false !== $request->get_param( 'send_email' ) ) );
 	}
 
