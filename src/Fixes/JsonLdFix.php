@@ -11,6 +11,7 @@ use GenReady\Api\ApiError;
 use GenReady\Api\Client;
 use GenReady\Compat\Caches;
 use GenReady\Compat\SeoPlugins;
+use GenReady\Support\Text;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -742,10 +743,10 @@ final class JsonLdFix {
 	 */
 	private function form_value( string $rule, string $value ): ?string {
 		if ( 'textarea' === $rule ) {
-			return trim( mb_substr( sanitize_textarea_field( $value ), 0, self::MAX_DESCRIPTION ) );
+			return Text::cap( sanitize_textarea_field( $value ), self::MAX_DESCRIPTION );
 		}
 		if ( 'text' === $rule ) {
-			return $this->cap( trim( sanitize_text_field( $value ) ), self::MAX_TEXT );
+			return Text::cap( sanitize_text_field( $value ), self::MAX_TEXT );
 		}
 		$value = trim( $value );
 		if ( '' === $value ) {
@@ -836,33 +837,15 @@ final class JsonLdFix {
 
 	/**
 	 * Turn a WordPress text into plain text on one line: decode entities, remove
-	 * tags, trim, and cut it at a length.
+	 * tags, trim, and cut it to the server's UTF-16 length limit.
 	 *
 	 * @param string $text Text.
-	 * @param int    $max  Longest length.
+	 * @param int    $max  Longest length in UTF-16 code units.
 	 */
 	private function clean( string $text, int $max ): string {
 		$text = wp_strip_all_tags( html_entity_decode( $text, ENT_QUOTES, 'UTF-8' ) );
 		$text = trim( (string) preg_replace( '/\s+/u', ' ', $text ) );
-		return $this->cap( $text, $max );
-	}
-
-	/**
-	 * Cut a text so the server's length check passes. The server counts UTF-16
-	 * code units, so a character outside the BMP counts twice.
-	 *
-	 * @param string $text Text.
-	 * @param int    $max  Longest length.
-	 */
-	private function cap( string $text, int $max ): string {
-		$text  = mb_substr( $text, 0, $max );
-		$units = strlen( (string) mb_convert_encoding( $text, 'UTF-16LE', 'UTF-8' ) ) / 2;
-		while ( $units > $max ) {
-			$last   = mb_substr( $text, -1 );
-			$text   = mb_substr( $text, 0, -1 );
-			$units -= strlen( (string) mb_convert_encoding( $last, 'UTF-16LE', 'UTF-8' ) ) / 2;
-		}
-		return trim( $text );
+		return Text::cap( $text, $max );
 	}
 
 	/**

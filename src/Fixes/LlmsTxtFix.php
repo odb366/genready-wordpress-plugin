@@ -12,6 +12,7 @@ use GenReady\Api\Client;
 use GenReady\Compat\Caches;
 use GenReady\Compat\SeoPlugins;
 use GenReady\Connection\Site;
+use GenReady\Support\Text;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -559,15 +560,15 @@ class LlmsTxtFix {
 
 	/**
 	 * Turn a WordPress text into plain text on one line: decode entities, remove
-	 * tags, trim, and cut it at a length.
+	 * tags, trim, and cut it to the server's UTF-16 length limit.
 	 *
 	 * @param string $text Text.
-	 * @param int    $max  Longest length in characters.
+	 * @param int    $max  Longest length in UTF-16 code units.
 	 */
 	private function clean( string $text, int $max ): string {
 		$text = wp_strip_all_tags( html_entity_decode( $text, ENT_QUOTES, 'UTF-8' ) );
 		$text = trim( (string) preg_replace( '/\s+/u', ' ', $text ) );
-		return trim( mb_substr( $text, 0, $max ) );
+		return Text::cap( $text, $max );
 	}
 
 	/**

@@ -257,6 +257,15 @@ class LlmsTxtFixTest extends TestCase {
 		$this->assertStringStartsWith( '& n', $this->fixFor( '/' )->site_input()['name'] );
 	}
 
+	public function test_site_input_caps_names_with_emoji_by_utf16_length(): void {
+		$this->blog['name']        = str_repeat( 'n😀', 100 );
+		$this->blog['description'] = str_repeat( '😀', 400 );
+		$input                     = $this->fixFor( '/' )->site_input();
+		$this->assertLessThanOrEqual( 200, intdiv( strlen( (string) iconv( 'UTF-8', 'UTF-16LE', $input['name'] ) ), 2 ) );
+		$this->assertSame( 199, intdiv( strlen( (string) iconv( 'UTF-8', 'UTF-16LE', $input['name'] ) ), 2 ) );
+		$this->assertSame( 250, mb_strlen( $input['tagline'] ) );
+	}
+
 	public function test_site_input_caps_items_at_200_pages_first(): void {
 		$pages = array();
 		$posts = array();
