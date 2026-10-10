@@ -609,91 +609,114 @@
 		return values;
 	}
 
+	/*
+	 * Card actions. Each gets the card context: card, kind, result (status
+	 * region), apply (the Apply button) and path (the REST path of the kind).
+	 */
+
+	async function cardPreview( ctx ) {
+		ctx.apply.hidden = true;
+		try {
+			var preview = await call( 'POST', ctx.path + 'preview', previewBody( ctx.card, ctx.kind ) );
+			var ready = renderPreview( ctx.card, ctx.kind, preview );
+			ctx.apply.hidden = ! ready;
+			say( ctx.result, ready ? __( 'Check the preview, then click Apply.', 'genready' ) : __( 'GenReady cannot apply this preview yet. Read the preview for the reason.', 'genready' ), ready ? 'info' : 'warning' );
+		} catch ( error ) {
+			field( ctx.card, 'preview' ).hidden = true;
+			showError( ctx.result, error );
+		}
+	}
+
+	async function cardApply( ctx ) {
+		try {
+			var answer = await call( 'POST', ctx.path + 'apply', ctx.kind === 'jsonld' ? { values: fillValues( ctx.card ) } : {} );
+			updateCard( ctx.card, answer.card );
+			ctx.apply.hidden = true;
+			field( ctx.card, 'preview' ).hidden = true;
+			say( ctx.result, ctx.kind === 'jsonld' ? __( 'Applied.', 'genready' ) : __( 'Applied. Check the live file in a minute.', 'genready' ), 'success' );
+		} catch ( error ) {
+			var download = cardAction( ctx.card, 'download' );
+			if ( download && WRITE_CODES.indexOf( errorCode( error ) ) !== -1 ) {
+				download.hidden = false;
+			}
+			showError( ctx.result, error );
+		}
+	}
+
+	async function cardDownload( ctx ) {
+		try {
+			var file = await call( 'POST', ctx.path + 'download' );
+			if ( ! file || typeof file.content !== 'string' ) {
+				say( ctx.result, __( 'GenReady could not do this. Try again.', 'genready' ), 'error' );
+				return;
+			}
+			saveFile( FILE_NAMES[ ctx.kind ], file.content );
+			say( ctx.result, __( "The file is downloaded. Upload it to your site's root folder.", 'genready' ), 'success' );
+		} catch ( error ) {
+			showError( ctx.result, error );
+		}
+	}
+
+	async function cardUndo( ctx ) {
+		try {
+			var answer = await call( 'POST', ctx.path + 'undo' );
+			updateCard( ctx.card, answer.card );
+			ctx.apply.hidden = true;
+			field( ctx.card, 'preview' ).hidden = true;
+			say( ctx.result, __( 'Undone.', 'genready' ), 'success' );
+		} catch ( error ) {
+			showError( ctx.result, error );
+		}
+	}
+
+	async function cardLiveCheck( ctx ) {
+		try {
+			var answer = await call( 'POST', ctx.path + 'live-check' );
+			updateCard( ctx.card, answer.card );
+			var live = answer.card && answer.card.live ? answer.card.live : null;
+			say( ctx.result, live ? String( live.message || '' ) : __( 'GenReady could not reach your site.', 'genready' ), live && live.state === 'live' ? 'success' : 'warning' );
+		} catch ( error ) {
+			showError( ctx.result, error );
+		}
+	}
+
+	async function cardAsFile( ctx ) {
+		try {
+			await call( 'POST', ctx.path + 'preview', previewBody( ctx.card, ctx.kind ) );
+			var answer = await call( 'POST', ctx.path + 'apply', { as_file: true } );
+			updateCard( ctx.card, answer.card );
+			say( ctx.result, __( 'GenReady wrote llms.txt as a file. Check the live file in a minute.', 'genready' ), 'success' );
+		} catch ( error ) {
+			showError( ctx.result, error );
+		}
+	}
+
+	var CARD_ACTIONS = {
+		preview: cardPreview,
+		apply: cardApply,
+		download: cardDownload,
+		undo: cardUndo,
+		'live-check': cardLiveCheck,
+		'as-file': cardAsFile,
+	};
+
 	function initCard( card ) {
 		var kind = card.getAttribute( 'data-kind' );
-		var result = field( card, 'result' );
-		var apply = cardAction( card, 'apply' );
-		var path = '/fixes/' + kind + '/';
+		var ctx = {
+			card: card,
+			kind: kind,
+			result: field( card, 'result' ),
+			apply: cardAction( card, 'apply' ),
+			path: '/fixes/' + kind + '/',
+		};
 		var group = function () {
 			return cardButtons( card );
 		};
-
-		onAction( card, 'preview', async function () {
-			apply.hidden = true;
-			try {
-				var preview = await call( 'POST', path + 'preview', previewBody( card, kind ) );
-				var ready = renderPreview( card, kind, preview );
-				apply.hidden = ! ready;
-				say( result, ready ? __( 'Check the preview, then click Apply.', 'genready' ) : __( 'GenReady cannot apply this preview yet. Read the preview for the reason.', 'genready' ), ready ? 'info' : 'warning' );
-			} catch ( error ) {
-				field( card, 'preview' ).hidden = true;
-				showError( result, error );
-			}
-		}, group );
-
-		onAction( card, 'apply', async function () {
-			try {
-				var answer = await call( 'POST', path + 'apply', kind === 'jsonld' ? { values: fillValues( card ) } : {} );
-				updateCard( card, answer.card );
-				apply.hidden = true;
-				field( card, 'preview' ).hidden = true;
-				say( result, kind === 'jsonld' ? __( 'Applied.', 'genready' ) : __( 'Applied. Check the live file in a minute.', 'genready' ), 'success' );
-			} catch ( error ) {
-				var download = cardAction( card, 'download' );
-				if ( download && WRITE_CODES.indexOf( errorCode( error ) ) !== -1 ) {
-					download.hidden = false;
-				}
-				showError( result, error );
-			}
-		}, group );
-
-		onAction( card, 'download', async function () {
-			try {
-				var file = await call( 'POST', path + 'download' );
-				if ( ! file || typeof file.content !== 'string' ) {
-					say( result, __( 'GenReady could not do this. Try again.', 'genready' ), 'error' );
-					return;
-				}
-				saveFile( FILE_NAMES[ kind ], file.content );
-				say( result, __( "The file is downloaded. Upload it to your site's root folder.", 'genready' ), 'success' );
-			} catch ( error ) {
-				showError( result, error );
-			}
-		}, group );
-
-		onAction( card, 'undo', async function () {
-			try {
-				var answer = await call( 'POST', path + 'undo' );
-				updateCard( card, answer.card );
-				apply.hidden = true;
-				field( card, 'preview' ).hidden = true;
-				say( result, __( 'Undone.', 'genready' ), 'success' );
-			} catch ( error ) {
-				showError( result, error );
-			}
-		}, group );
-
-		onAction( card, 'live-check', async function () {
-			try {
-				var answer = await call( 'POST', path + 'live-check' );
-				updateCard( card, answer.card );
-				var live = answer.card && answer.card.live ? answer.card.live : null;
-				say( result, live ? String( live.message || '' ) : __( 'GenReady could not reach your site.', 'genready' ), live && live.state === 'live' ? 'success' : 'warning' );
-			} catch ( error ) {
-				showError( result, error );
-			}
-		}, group );
-
-		onAction( card, 'as-file', async function () {
-			try {
-				await call( 'POST', path + 'preview', previewBody( card, kind ) );
-				var answer = await call( 'POST', path + 'apply', { as_file: true } );
-				updateCard( card, answer.card );
-				say( result, __( 'GenReady wrote llms.txt as a file. Check the live file in a minute.', 'genready' ), 'success' );
-			} catch ( error ) {
-				showError( result, error );
-			}
-		}, group );
+		Object.keys( CARD_ACTIONS ).forEach( function ( name ) {
+			onAction( card, name, function () {
+				return CARD_ACTIONS[ name ]( ctx );
+			}, group );
+		} );
 	}
 
 	/* ---------- Connection tab ---------- */

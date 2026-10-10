@@ -182,6 +182,29 @@ final class JsonLdFix {
 		if ( $result instanceof ApiError ) {
 			return $result;
 		}
+		$preview = $this->checked_preview( $result, $target );
+		if ( isset( $preview['error'] ) ) {
+			return $preview;
+		}
+		if ( isset( $target['home'] ) && 'WebPage' === $preview['type'] && ! isset( $overrides['description'] ) ) {
+			$overrides['description'] = Text::clean( (string) get_bloginfo( 'description' ), SchemaNode::MAX_DESCRIPTION );
+		}
+		$preview = $this->fill( $preview, $overrides );
+		if ( isset( $preview['node'] ) && ! SchemaNode::fits( $preview['node'] ) ) {
+			return array( 'error' => $this->uncheckable() );
+		}
+		return $preview;
+	}
+
+	/**
+	 * Check the server's node and keep only the fields the plugin uses.
+	 *
+	 * @param array $result The server's answer.
+	 * @param array $target The page the node is for.
+	 * @return array The preview before fill(), or array( 'error' => string ).
+	 */
+	private function checked_preview( array $result, array $target ): array {
+		$fail = array( 'error' => __( 'GenReady could not do this. Try again.', 'genready' ) );
 		$type = $result['type'] ?? null;
 		$node = $result['node'] ?? null;
 		if ( ! is_array( $node ) ) {
@@ -196,23 +219,15 @@ final class JsonLdFix {
 			return $fail;
 		}
 		$existing = $result['existing'] ?? null;
-		$preview  = array(
+		return array(
 			'type'           => $type,
 			'node'           => $node,
 			'changed'        => false !== ( $result['changed'] ?? true ),
-			'summary'        => $this->strings( $result['summary'] ?? null ),
-			'notes'          => $this->strings( $result['notes'] ?? null ),
-			'existing_types' => is_array( $existing ) && is_array( $existing['types'] ?? null ) ? $this->strings( $existing['types'] ) : null,
+			'summary'        => Text::strings( $result['summary'] ?? null ),
+			'notes'          => Text::strings( $result['notes'] ?? null ),
+			'existing_types' => is_array( $existing ) && is_array( $existing['types'] ?? null ) ? Text::strings( $existing['types'] ) : null,
 			'target'         => $target,
 		);
-		if ( isset( $target['home'] ) && 'WebPage' === $type && ! isset( $overrides['description'] ) ) {
-			$overrides['description'] = $this->clean( (string) get_bloginfo( 'description' ), SchemaNode::MAX_DESCRIPTION );
-		}
-		$preview = $this->fill( $preview, $overrides );
-		if ( isset( $preview['node'] ) && ! SchemaNode::fits( $preview['node'] ) ) {
-			return array( 'error' => $this->uncheckable() );
-		}
-		return $preview;
 	}
 
 	/**
@@ -284,7 +299,7 @@ final class JsonLdFix {
 		if ( null !== $refusal ) {
 			return array( 'error' => $refusal );
 		}
-		$existing = is_array( $preview['existing_types'] ?? null ) ? $this->strings( $preview['existing_types'] ) : null;
+		$existing = is_array( $preview['existing_types'] ?? null ) ? Text::strings( $preview['existing_types'] ) : null;
 		if ( array() === $this->seo->active() ) {
 			if ( null === $existing ) {
 				return array( 'error' => __( 'GenReady needs a newer server answer to check this page for existing markup. Try again later.', 'genready' ) );
@@ -487,7 +502,7 @@ final class JsonLdFix {
 		return array(
 			'node'           => $raw['node'],
 			'type'           => is_string( $raw['type'] ?? null ) ? $raw['type'] : $types[0],
-			'existing_types' => is_array( $raw['existing_types'] ?? null ) ? $this->strings( $raw['existing_types'] ) : array(),
+			'existing_types' => is_array( $raw['existing_types'] ?? null ) ? Text::strings( $raw['existing_types'] ) : array(),
 		);
 	}
 
@@ -597,7 +612,7 @@ final class JsonLdFix {
 				$todo[] = (string) $prop;
 			}
 		}
-		$blocked = array_values( array_unique( array_merge( $this->strings( $blocked ), array_diff( $todo, array_keys( self::FILLABLE ) ) ) ) );
+		$blocked = array_values( array_unique( array_merge( Text::strings( $blocked ), array_diff( $todo, array_keys( self::FILLABLE ) ) ) ) );
 		$blocked = array_values( array_intersect( $blocked, $todo ) );
 		if ( array() !== $blocked ) {
 			return sprintf(
@@ -624,7 +639,7 @@ final class JsonLdFix {
 	 */
 	private function wp_facts( array $target ): ?array {
 		if ( isset( $target['home'] ) ) {
-			$title = $this->clean( (string) get_bloginfo( 'name' ), SchemaNode::MAX_TEXT );
+			$title = Text::clean( (string) get_bloginfo( 'name' ), SchemaNode::MAX_TEXT );
 			return '' === $title ? array() : array( 'title' => $title );
 		}
 		$post = get_post( $target['post_id'] );
@@ -632,8 +647,8 @@ final class JsonLdFix {
 			return null;
 		}
 		$facts = array(
-			'title'         => $this->clean( (string) get_the_title( $post ), SchemaNode::MAX_TEXT ),
-			'author'        => $this->clean( (string) get_the_author_meta( 'display_name', (int) ( $post->post_author ?? 0 ) ), SchemaNode::MAX_TEXT ),
+			'title'         => Text::clean( (string) get_the_title( $post ), SchemaNode::MAX_TEXT ),
+			'author'        => Text::clean( (string) get_the_author_meta( 'display_name', (int) ( $post->post_author ?? 0 ) ), SchemaNode::MAX_TEXT ),
 			'datePublished' => get_post_time( 'c', true, $post ),
 			'dateModified'  => get_post_modified_time( 'c', true, $post ),
 		);
@@ -659,28 +674,5 @@ final class JsonLdFix {
 		}
 		return strtolower( $parts['host'] ) === strtolower( $home['host'] )
 			&& rtrim( $parts['path'] ?? '', '/' ) === rtrim( $home['path'] ?? '', '/' );
-	}
-
-	/**
-	 * Turn a WordPress text into plain text on one line: decode entities, remove
-	 * tags, trim, and cut it to the server's UTF-16 length limit.
-	 *
-	 * @param string $text Text.
-	 * @param int    $max  Longest length in UTF-16 code units.
-	 */
-	private function clean( string $text, int $max ): string {
-		$text = wp_strip_all_tags( html_entity_decode( $text, ENT_QUOTES, 'UTF-8' ) );
-		$text = trim( (string) preg_replace( '/\s+/u', ' ', $text ) );
-		return Text::cap( $text, $max );
-	}
-
-	/**
-	 * Keep only the strings of a list.
-	 *
-	 * @param mixed $values Value.
-	 * @return string[]
-	 */
-	private function strings( $values ): array {
-		return is_array( $values ) ? array_values( array_filter( $values, 'is_string' ) ) : array();
 	}
 }

@@ -163,12 +163,28 @@ final class OAuth {
 		if ( '' === $code ) {
 			return array( 'error' => __( 'GenReady did not finish the connection. Click Connect again.', 'genready' ) );
 		}
+		$connection = $this->exchange( $code, (string) ( $pending['verifier'] ?? '' ) );
+		if ( null === $connection ) {
+			return array( 'error' => __( 'GenReady did not finish the connection. Click Connect again.', 'genready' ) );
+		}
+		$this->store->save( $connection );
+		return $this->add_verification_token( $connection['domain_id'] );
+	}
+
+	/**
+	 * Exchange the authorization code for tokens.
+	 *
+	 * @param string $code     Authorization code.
+	 * @param string $verifier PKCE verifier.
+	 * @return array|null The connection to store, or null when the answer is not usable.
+	 */
+	private function exchange( string $code, string $verifier ): ?array {
 		$tokens = $this->client->post_form(
 			'/oauth/token',
 			array(
 				'grant_type'    => 'authorization_code',
 				'code'          => $code,
-				'code_verifier' => (string) ( $pending['verifier'] ?? '' ),
+				'code_verifier' => $verifier,
 				'client_id'     => $this->client_id(),
 				'redirect_uri'  => $this->redirect_uri(),
 			),
@@ -178,9 +194,9 @@ final class OAuth {
 			|| ! $this->is_token( $tokens['access_token'] ?? null )
 			|| ! $this->is_token( $tokens['refresh_token'] ?? null )
 			|| ! is_string( $tokens['domain_id'] ?? null ) || '' === $tokens['domain_id'] ) {
-			return array( 'error' => __( 'GenReady did not finish the connection. Click Connect again.', 'genready' ) );
+			return null;
 		}
-		$connection = array(
+		return array(
 			'method'         => 'oauth',
 			'access_token'   => $tokens['access_token'],
 			'refresh_token'  => $tokens['refresh_token'],
@@ -188,9 +204,18 @@ final class OAuth {
 			'client_id'      => $this->client_id(),
 			'domain_id'      => sanitize_text_field( $tokens['domain_id'] ),
 		);
-		$this->store->save( $connection );
+	}
 
-		// The token response has no verification token. POST /api/v1/domains returns it, also for an existing site.
+	/**
+	 * Fetch the verification token and add it to the stored connection. The
+	 * token response has no verification token; POST /api/v1/domains returns
+	 * it, also for an existing site. The call can refresh the tokens, so the
+	 * token goes into the connection as stored after the call.
+	 *
+	 * @param string $domain_id Domain ID of the new connection.
+	 * @return array array( 'ok' => true ), with a 'notice' when the call failed. The connection stays.
+	 */
+	private function add_verification_token( string $domain_id ): array {
 		$domain = $this->client->request( 'POST', '/api/v1/domains', array( 'hostname' => Site::hostname() ) );
 		if ( $domain instanceof ApiError ) {
 			return array(
@@ -199,12 +224,11 @@ final class OAuth {
 			);
 		}
 		$info = is_array( $domain['domain'] ?? null ) ? $domain['domain'] : array();
-		if ( ( $info['id'] ?? null ) !== $connection['domain_id'] || ! is_string( $info['verificationToken'] ?? null ) || '' === $info['verificationToken'] ) {
+		if ( ( $info['id'] ?? null ) !== $domain_id || ! is_string( $info['verificationToken'] ?? null ) || '' === $info['verificationToken'] ) {
 			return array( 'ok' => true );
 		}
-		// The call can refresh the tokens, so add the verification token to the connection as stored now.
 		$fresh = $this->store->load();
-		if ( is_array( $fresh ) && ( $fresh['domain_id'] ?? null ) === $connection['domain_id'] ) {
+		if ( is_array( $fresh ) && ( $fresh['domain_id'] ?? null ) === $domain_id ) {
 			$fresh['verification_token'] = sanitize_text_field( $info['verificationToken'] );
 			$this->store->save( $fresh );
 		}

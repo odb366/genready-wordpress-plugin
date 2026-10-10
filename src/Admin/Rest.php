@@ -15,6 +15,7 @@ use GenReady\Connection\OAuth;
 use GenReady\Connection\SiteSetup;
 use GenReady\Connection\TokenStore;
 use GenReady\Fixes\JsonLdFix;
+use GenReady\Support\Text;
 use GenReady\Verification\MetaTag;
 
 defined( 'ABSPATH' ) || exit;
@@ -566,24 +567,21 @@ final class Rest {
 	 * @param array  $preview The preview.
 	 */
 	private function display( string $kind, array $preview ): array {
-		$strings = static function ( $values ): array {
-			return is_array( $values ) ? array_values( array_filter( $values, 'is_string' ) ) : array();
-		};
 		$display = array(
 			'diff'            => is_string( $preview['diff'] ?? null ) ? $preview['diff'] : '',
-			'summary'         => $strings( $preview['summary'] ?? null ),
-			'notes'           => $strings( $preview['notes'] ?? null ),
+			'summary'         => Text::strings( $preview['summary'] ?? null ),
+			'notes'           => Text::strings( $preview['notes'] ?? null ),
 			'changed'         => false !== ( $preview['changed'] ?? true ),
 			'needsHumanInput' => true === ( $preview['needsHumanInput'] ?? false ),
-			'missing'         => $strings( $preview['missing'] ?? null ),
-			'blocked_props'   => $strings( $preview['blocked_props'] ?? null ),
+			'missing'         => Text::strings( $preview['missing'] ?? null ),
+			'blocked_props'   => Text::strings( $preview['blocked_props'] ?? null ),
 			'external'        => true === ( $preview['external'] ?? false ),
 			'mode'            => is_string( $preview['mode'] ?? null ) ? $preview['mode'] : '',
 		);
 		if ( 'jsonld' === $kind ) {
 			// The node is shown as text so the admin sees what will be added; apply never reads it from the browser.
 			$display['type']     = is_string( $preview['type'] ?? null ) ? $preview['type'] : '';
-			$display['fillable'] = $strings( $preview['fillable'] ?? null );
+			$display['fillable'] = Text::strings( $preview['fillable'] ?? null );
 			$display['code']     = (string) wp_json_encode( $preview['node'] ?? array(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 		}
 		return $display;

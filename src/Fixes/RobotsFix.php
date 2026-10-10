@@ -10,6 +10,7 @@ namespace GenReady\Fixes;
 use GenReady\Api\ApiError;
 use GenReady\Api\Client;
 use GenReady\Compat\Caches;
+use GenReady\Support\Text;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -229,7 +230,21 @@ class RobotsFix {
 		if ( strlen( $base ) > self::MAX_BASE_BYTES ) {
 			return array( 'error' => __( 'robots.txt is too large for GenReady to check.', 'genready' ) );
 		}
-		$result = $this->client->request(
+		$result = $this->request_merge( $domain_id, $mode, $base, $content_signal );
+		return $result instanceof ApiError ? $result : $this->checked_preview( $result, $mode, $base );
+	}
+
+	/**
+	 * Ask the server to merge the AI crawler rules into the base.
+	 *
+	 * @param string $domain_id      GenReady domain ID.
+	 * @param string $mode           Current mode.
+	 * @param string $base           The robots.txt the merge starts from.
+	 * @param bool   $content_signal Add the Content-Signal line.
+	 * @return array|ApiError The server's answer.
+	 */
+	private function request_merge( string $domain_id, string $mode, string $base, bool $content_signal ) {
+		return $this->client->request(
 			'POST',
 			'/api/v1/artifacts/robots_txt/merge',
 			array(
@@ -242,9 +257,18 @@ class RobotsFix {
 			),
 			30
 		);
-		if ( $result instanceof ApiError ) {
-			return $result;
-		}
+	}
+
+	/**
+	 * Check the server's merge against the base it was sent and keep only the
+	 * fields the plugin uses.
+	 *
+	 * @param array  $result The server's answer.
+	 * @param string $mode   Current mode.
+	 * @param string $base   The robots.txt that was sent.
+	 * @return array The preview (see preview()), or array( 'error' => string ).
+	 */
+	private function checked_preview( array $result, string $mode, string $base ): array {
 		$base_sha256 = hash( 'sha256', $base );
 		$server_hash = $result['baseSha256'] ?? null;
 		if ( ! is_string( $server_hash ) || ! hash_equals( $base_sha256, $server_hash ) ) {
@@ -258,8 +282,8 @@ class RobotsFix {
 		return array(
 			'content'         => $content,
 			'diff'            => is_string( $result['diff'] ?? null ) ? $result['diff'] : '',
-			'summary'         => $this->strings( $result['summary'] ?? null ),
-			'notes'           => $this->strings( $result['notes'] ?? null ),
+			'summary'         => Text::strings( $result['summary'] ?? null ),
+			'notes'           => Text::strings( $result['notes'] ?? null ),
 			'changed'         => true === ( $result['changed'] ?? false ),
 			'needsHumanInput' => false !== ( $result['needsHumanInput'] ?? true ),
 			'external'        => $this->is_external( $mode, $live ),
@@ -442,15 +466,6 @@ class RobotsFix {
 		return true;
 	}
 
-	/**
-	 * Keep only the strings of a list.
-	 *
-	 * @param mixed $values Value from the server.
-	 * @return string[]
-	 */
-	private function strings( $values ): array {
-		return is_array( $values ) ? array_values( array_filter( $values, 'is_string' ) ) : array();
-	}
 
 	/**
 	 * The file and record work shared with the other file-backed fix. It is

@@ -146,11 +146,11 @@ class LlmsTxtFix {
 	 * @return array array( 'name' => string, 'tagline' => string, 'pages' => array[] ).
 	 */
 	public function site_input( ?string $tagline = null ): array {
-		$name = $this->clean( (string) get_bloginfo( 'name' ), self::MAX_NAME );
+		$name = Text::clean( (string) get_bloginfo( 'name' ), self::MAX_NAME );
 		if ( '' === $name ) {
 			$name = Site::hostname();
 		}
-		$tagline = $this->clean( null === $tagline ? (string) get_bloginfo( 'description' ) : $tagline, self::MAX_TAGLINE );
+		$tagline = Text::clean( null === $tagline ? (string) get_bloginfo( 'description' ) : $tagline, self::MAX_TAGLINE );
 		$pages   = array();
 		$sources = array(
 			'page' => get_pages(
@@ -251,11 +251,11 @@ class LlmsTxtFix {
 		return array(
 			'content'         => $content,
 			'diff'            => is_string( $result['diff'] ?? null ) ? $result['diff'] : '',
-			'summary'         => $this->strings( $result['summary'] ?? null ),
-			'notes'           => $this->strings( $result['notes'] ?? null ),
+			'summary'         => Text::strings( $result['summary'] ?? null ),
+			'notes'           => Text::strings( $result['notes'] ?? null ),
 			'changed'         => true === ( $result['changed'] ?? false ),
 			'needsHumanInput' => false !== ( $result['needsHumanInput'] ?? true ),
-			'missing'         => array_values( array_intersect( $this->strings( $result['missing'] ?? null ), array( 'summary', 'pages' ) ) ),
+			'missing'         => array_values( array_intersect( Text::strings( $result['missing'] ?? null ), array( 'summary', 'pages' ) ) ),
 			'base_sha256'     => hash( 'sha256', (string) $base ),
 			'mode'            => $mode,
 		);
@@ -448,7 +448,7 @@ class LlmsTxtFix {
 			return null;
 		}
 		$url   = get_permalink( $item );
-		$title = $this->clean( (string) get_the_title( $item ), self::MAX_TITLE );
+		$title = Text::clean( (string) get_the_title( $item ), self::MAX_TITLE );
 		if ( '' === $title || ! is_string( $url ) || strlen( $url ) > self::MAX_URL || 1 !== preg_match( '#^https?://#i', $url ) || false === wp_http_validate_url( $url ) ) {
 			return null;
 		}
@@ -459,28 +459,7 @@ class LlmsTxtFix {
 		);
 	}
 
-	/**
-	 * Turn a WordPress text into plain text on one line: decode entities, remove
-	 * tags, trim, and cut it to the server's UTF-16 length limit.
-	 *
-	 * @param string $text Text.
-	 * @param int    $max  Longest length in UTF-16 code units.
-	 */
-	private function clean( string $text, int $max ): string {
-		$text = wp_strip_all_tags( html_entity_decode( $text, ENT_QUOTES, 'UTF-8' ) );
-		$text = trim( (string) preg_replace( '/\s+/u', ' ', $text ) );
-		return Text::cap( $text, $max );
-	}
 
-	/**
-	 * Keep only the strings of a list.
-	 *
-	 * @param mixed $values Value from the server.
-	 * @return string[]
-	 */
-	private function strings( $values ): array {
-		return is_array( $values ) ? array_values( array_filter( $values, 'is_string' ) ) : array();
-	}
 
 	/**
 	 * The file and record work shared with the other file-backed fix. It is

@@ -10,8 +10,8 @@ namespace GenReady\Support;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Text helpers that use only functions WordPress polyfills (mb_substr,
- * mb_strlen) and PCRE with the /u modifier, so they work without mbstring.
+ * Text helpers. cap() uses only functions WordPress polyfills (mb_substr,
+ * mb_strlen) and PCRE with the /u modifier, so it works without mbstring.
  */
 final class Text {
 	/** A character outside the Basic Multilingual Plane: two UTF-16 code units. */
@@ -39,5 +39,28 @@ final class Text {
 			$units -= 1 === preg_match( self::ASTRAL, $last ) ? 2 : 1;
 		}
 		return trim( $text );
+	}
+
+	/**
+	 * Turn a WordPress text into plain text on one line: decode entities, remove
+	 * tags, join white space, trim, and cut it to the server's UTF-16 length limit.
+	 *
+	 * @param string $text Text.
+	 * @param int    $max  Longest length in UTF-16 code units.
+	 */
+	public static function clean( string $text, int $max ): string {
+		$text = wp_strip_all_tags( html_entity_decode( $text, ENT_QUOTES, 'UTF-8' ) );
+		$text = trim( (string) preg_replace( '/\s+/u', ' ', $text ) );
+		return self::cap( $text, $max );
+	}
+
+	/**
+	 * Keep only the strings of a list, for example a list from the server.
+	 *
+	 * @param mixed $values Value.
+	 * @return string[]
+	 */
+	public static function strings( $values ): array {
+		return is_array( $values ) ? array_values( array_filter( $values, 'is_string' ) ) : array();
 	}
 }
