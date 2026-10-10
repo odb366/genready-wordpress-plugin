@@ -1,0 +1,12 @@
+{
+	"$schema": "https://playground.wordpress.net/blueprint-schema.json",
+	"features": { "networking": true },
+	"steps": [
+		{ "step": "defineWpConfigConsts", "consts": { "GENREADY_API_BASE": "http://127.0.0.1:5002" } },
+		{ "step": "activatePlugin", "pluginPath": "genready/genready.php" },
+		{
+			"step": "runPHP",
+			"code": "<?php require '/wordpress/wp-load.php'; update_option( 'permalink_structure', '/%postname%/' ); flush_rewrite_rules();"
+		}
+	]
+}

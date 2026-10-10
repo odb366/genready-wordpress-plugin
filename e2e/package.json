@@ -1,0 +1,12 @@
+{
+  "name": "genready-wordpress-e2e",
+  "private": true,
+  "description": "End-to-end tests for the GenReady WordPress plugin in WordPress Playground.",
+  "license": "GPL-2.0-or-later",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0"
+  }
+}
