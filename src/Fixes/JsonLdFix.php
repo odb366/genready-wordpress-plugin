@@ -46,6 +46,10 @@ final class JsonLdFix {
 	const RANK_MATH_KEY = 'genready';
 	/** Prefix of a value the server could not fill. */
 	const TODO = 'TODO: ';
+	/** The only keys a node may have, at every depth. List indexes are not keys. */
+	const KEY_PATTERN = '/^@?[A-Za-z][A-Za-z0-9_:-]{0,63}$/D';
+	/** Largest node, in bytes of wp_json_encode() output. */
+	const MAX_NODE_BYTES = 32768;
 
 	/**
 	 * Properties the preview form can fill, and how each is checked.
@@ -200,10 +204,17 @@ final class JsonLdFix {
 		if ( $result instanceof ApiError ) {
 			return $result;
 		}
-		$type  = $result['type'] ?? null;
-		$node  = $result['node'] ?? null;
-		$types = is_array( $node ) ? self::node_types( $node ) : array();
-		if ( ! is_string( $type ) || ! in_array( $type, $types, true ) ) {
+		$type = $result['type'] ?? null;
+		$node = $result['node'] ?? null;
+		if ( ! is_array( $node ) ) {
+			return $fail;
+		}
+		// Some SEO plugins print the graph without escaping slashes, so a value must never close the script tag.
+		$node = self::clean_node( $node );
+		if ( null === $node ) {
+			return array( 'error' => $this->uncheckable() );
+		}
+		if ( ! is_string( $type ) || ! in_array( $type, self::node_types( $node ), true ) ) {
 			return $fail;
 		}
 		$existing = $result['existing'] ?? null;
@@ -219,7 +230,11 @@ final class JsonLdFix {
 		if ( isset( $target['home'] ) && 'WebPage' === $type && ! isset( $overrides['description'] ) ) {
 			$overrides['description'] = $this->clean( (string) get_bloginfo( 'description' ), self::MAX_DESCRIPTION );
 		}
-		return $this->fill( $preview, $overrides );
+		$preview = $this->fill( $preview, $overrides );
+		if ( isset( $preview['node'] ) && ! self::fits( $preview['node'] ) ) {
+			return array( 'error' => $this->uncheckable() );
+		}
+		return $preview;
 	}
 
 	/**
@@ -234,7 +249,7 @@ final class JsonLdFix {
 	public function fill( array $preview, array $values ): array {
 		$node = is_array( $preview['node'] ?? null ) ? $preview['node'] : array();
 		foreach ( self::FILLABLE as $prop => $rule ) {
-			if ( ! isset( $values[ $prop ] ) || ! is_string( $values[ $prop ] ) || ! $this->is_todo( $node[ $prop ] ?? null ) ) {
+			if ( 1 !== preg_match( self::KEY_PATTERN, $prop ) || ! isset( $values[ $prop ] ) || ! is_string( $values[ $prop ] ) || ! $this->is_todo( $node[ $prop ] ?? null ) ) {
 				continue;
 			}
 			$value = $this->form_value( $rule, $values[ $prop ] );
@@ -242,7 +257,7 @@ final class JsonLdFix {
 				return array( 'error' => $this->bad_value( $rule, $prop ) );
 			}
 			if ( '' !== $value ) {
-				$node[ $prop ] = $value;
+				$node[ $prop ] = self::angle_free( $value );
 			}
 		}
 		$missing = array();
@@ -257,6 +272,60 @@ final class JsonLdFix {
 		$preview['fillable']      = $fillable;
 		$preview['blocked_props'] = array_values( array_diff( $missing, $fillable ) );
 		return $preview;
+	}
+
+	/**
+	 * Check every key of a node and make every string safe inside a script tag.
+	 * Keys must match KEY_PATTERN at every depth; a list keeps its indexes.
+	 * In every string, '<' becomes '‹' (U+2039) and '>' becomes '›' (U+203A).
+	 *
+	 * @param array $value A node, an object inside it, or a list.
+	 * @return array|null The clean value, or null when a key does not match.
+	 */
+	private static function clean_node( array $value ): ?array {
+		$is_list = array_keys( $value ) === range( 0, count( $value ) - 1 );
+		$clean   = array();
+		foreach ( $value as $key => $child ) {
+			if ( ! $is_list && ( ! is_string( $key ) || 1 !== preg_match( self::KEY_PATTERN, $key ) ) ) {
+				return null;
+			}
+			if ( is_array( $child ) ) {
+				$child = self::clean_node( $child );
+				if ( null === $child ) {
+					return null;
+				}
+			} elseif ( is_string( $child ) ) {
+				$child = self::angle_free( $child );
+			}
+			$clean[ $key ] = $child;
+		}
+		return $clean;
+	}
+
+	/**
+	 * Replace '<' with '‹' (U+2039) and '>' with '›' (U+203A).
+	 *
+	 * @param string $text Text.
+	 */
+	private static function angle_free( string $text ): string {
+		return str_replace( array( '<', '>' ), array( "\u{2039}", "\u{203A}" ), $text );
+	}
+
+	/**
+	 * Tell whether a node is at most MAX_NODE_BYTES as JSON.
+	 *
+	 * @param mixed $node Node.
+	 */
+	private static function fits( $node ): bool {
+		$json = wp_json_encode( $node );
+		return is_string( $json ) && strlen( $json ) <= self::MAX_NODE_BYTES;
+	}
+
+	/**
+	 * Text for a node the plugin refuses to store.
+	 */
+	private function uncheckable(): string {
+		return __( 'GenReady sent structured data that the plugin cannot check. Try again later.', 'genready' );
 	}
 
 	/**

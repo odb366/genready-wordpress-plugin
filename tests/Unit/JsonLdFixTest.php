@@ -737,6 +737,79 @@ class JsonLdFixTest extends TestCase {
 		$p = $this->preview_for( $this->answer( array( '@type' => 'WebPage', 'name' => 'Example & Co' ) ), array(), 'https://example.com/' );
 		$this->assertSame( 'GenReady could not save the structured data. Try again.', $this->fix->apply( $p )['error'] );
 	}
+
+	// Fix round A, G4: JSON-LD hardening.
+
+	const UNCHECKABLE = 'GenReady sent structured data that the plugin cannot check. Try again later.';
+
+	/**
+	 * @dataProvider bad_keys
+	 */
+	public function test_preview_refuses_keys_the_plugin_cannot_check( array $node ): void {
+		$this->seo->active = array( 'yoast' );
+		$answer            = $this->answer( array( '@type' => 'Article', 'headline' => 'H' ) );
+		$answer['node']    = array_merge( $answer['node'], $node );
+		$this->assertSame( array( 'error' => self::UNCHECKABLE ), $this->preview_for( $answer ) );
+	}
+
+	public function bad_keys(): array {
+		return array(
+			'script in a key'     => array( array( '</script><script>x' => 'v' ) ),
+			'space'               => array( array( 'head line' => 'v' ) ),
+			'starts with a digit' => array( array( '1abc' => 'v' ) ),
+			'number key'          => array( array( 'list' => array( 'a', 'b' ), 5 => 'v' ) ),
+			'too long'            => array( array( 'a' . str_repeat( 'b', 64 ) => 'v' ) ),
+			'nested'              => array( array( 'author' => array( 'name' => 'A', 'na"me' => 'B' ) ) ),
+			'in a list'           => array( array( 'author' => array( array( '@type' => 'Person', 'x>y' => 'B' ) ) ) ),
+			'empty'               => array( array( '' => 'v' ) ),
+		);
+	}
+
+	public function test_preview_accepts_schema_keys_and_lists(): void {
+		$this->seo->active = array( 'yoast' );
+		$node              = array(
+			'@type'    => array( 'Article', 'BlogPosting' ),
+			'@id'      => 'https://example.com/hello/#article',
+			'headline' => 'H',
+			'keywords' => array( 'a', 'b' ),
+			'author'   => array( array( '@type' => 'Person', 'name' => 'Ana', 'sameAs' => array( 'https://x.example/' ) ) ),
+			'og:title' => 'T',
+			'snake_case-key' => 'v',
+			'a' . str_repeat( 'b', 63 ) => 'v',
+		);
+		$preview = $this->preview_for( $this->answer( $node ) );
+		$this->assertArrayNotHasKey( 'error', $preview );
+		$this->assertSame( array( 'a', 'b' ), $preview['node']['keywords'] );
+	}
+
+	public function test_preview_replaces_angle_brackets_in_every_string(): void {
+		$this->seo->active = array( 'yoast' );
+		$node              = array(
+			'@type'    => 'Article',
+			'headline' => 'Tom & </script><script>alert(1)</script>',
+			'author'   => array(
+				'@type' => 'Person',
+				'name'  => '<b>Ana</b>',
+				'list'  => array( 'a<b', 'c>d', 3, true ),
+			),
+		);
+		$preview = $this->preview_for( $this->answer( $node ) );
+		$this->assertSame( "Tom & \u{2039}/script\u{203A}\u{2039}script\u{203A}alert(1)\u{2039}/script\u{203A}", $preview['node']['headline'] );
+		$this->assertSame( "\u{2039}b\u{203A}Ana\u{2039}/b\u{203A}", $preview['node']['author']['name'] );
+		$this->assertSame( array( "a\u{2039}b", "c\u{203A}d", 3, true ), $preview['node']['author']['list'] );
+		$this->assertSame( array( 'ok' => true ), $this->fix->apply( $preview ) );
+		$stored = wp_json_encode( $this->meta[5][ JsonLdFix::META ]['node'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+		$this->assertStringNotContainsString( '<', $stored );
+		$this->assertStringNotContainsString( '>', $stored );
+	}
+
+	public function test_preview_refuses_a_node_over_32_kb(): void {
+		$this->seo->active = array( 'yoast' );
+		$big               = $this->answer( array( '@type' => 'Article', 'headline' => 'H', 'articleBody' => str_repeat( 'a', 32768 ) ) );
+		$this->assertSame( array( 'error' => self::UNCHECKABLE ), $this->preview_for( $big ) );
+		$fits = $this->answer( array( '@type' => 'Article', 'headline' => 'H', 'articleBody' => str_repeat( 'a', 32000 ) ) );
+		$this->assertArrayNotHasKey( 'error', $this->preview_for( $fits ) );
+	}
 }
 
 /** Like WordPress's wp_slash() for nested arrays. */
