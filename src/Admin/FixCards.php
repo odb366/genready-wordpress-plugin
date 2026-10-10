@@ -153,13 +153,13 @@ class FixCards {
 		if ( 'jsonld' === $kind ) {
 			return $this->jsonld_card( $jsonld_target );
 		}
-		$fix     = 'robots' === $kind ? $this->robots : $this->llms;
-		$mode    = $fix->mode();
-		$refusal = 'robots' === $kind ? $this->robots->mode_refusal( $mode ) : $this->llms->refusal( $mode );
-		$record  = $this->store->get( $kind );
-		$applied = $this->is_applied( $kind );
-		$live    = $applied ? $this->live_state( $kind, $record ) : null;
-		$card    = array(
+		$fix      = 'robots' === $kind ? $this->robots : $this->llms;
+		$mode     = $fix->mode();
+		$refusal  = 'robots' === $kind ? $this->robots->mode_refusal( $mode ) : $this->llms->refusal( $mode );
+		$record   = $this->store->get( $kind );
+		$applied  = $this->is_applied( $kind );
+		$live     = $applied ? $this->live_state( $kind, $record ) : null;
+		$card     = array(
 			'kind'       => $kind,
 			'title'      => 'robots' === $kind ? 'robots.txt' : 'llms.txt',
 			'state'      => $applied ? 'applied' : 'not_applied',
@@ -175,16 +175,41 @@ class FixCards {
 			'can_write'  => 'file' !== $mode || $this->files->can_write( 'robots' === $kind ? RobotsFix::FILE : LlmsTxtFix::FILE ),
 			'as_file'    => 'llms' === $kind && $this->files->may_write(),
 		);
+		$conflict = $applied && 'llms' === $kind && 'virtual' === ( $record['mode'] ?? '' ) ? $this->llms_conflict() : null;
 		if ( $applied && 'robots' === $kind && $this->robots->needs_review() ) {
 			$card['state']      = 'needs_review';
 			$card['state_text'] = __( 'Needs review', 'genready' );
 			$card['message']    = __( 'Another plugin or a setting changed robots.txt after GenReady checked the fix, so WordPress serves robots.txt without it. Preview again.', 'genready' );
+		} elseif ( null !== $conflict ) {
+			$card['state']      = 'needs_review';
+			$card['state_text'] = __( 'Needs review', 'genready' );
+			$card['message']    = $conflict;
 		} elseif ( null !== $live && 'live' === $live['state'] ) {
 			$card['state_text'] = __( 'Applied, live', 'genready' );
 		} elseif ( null !== $live && 'cdn_old' === $live['state'] ) {
 			$card['state_text'] = __( 'Applied, CDN shows an old copy', 'genready' );
 		}
 		return $card;
+	}
+
+	/**
+	 * Why an applied virtual llms.txt is not served now, or null. serve() yields
+	 * to an SEO plugin that makes llms.txt, and when that check fails.
+	 */
+	private function llms_conflict(): ?string {
+		$check = $this->llms->seo_owner();
+		if ( $check['unknown'] ) {
+			return __( "GenReady could not check whether another plugin makes llms.txt, so WordPress does not serve GenReady's file now. Try again later.", 'genready' );
+		}
+		if ( ! is_array( $check['owner'] ) ) {
+			return null;
+		}
+		return sprintf(
+			/* translators: 1: SEO plugin name, 2: where to turn its llms.txt off. */
+			__( "%1\$s makes llms.txt now, so visitors get its file, not GenReady's. To use GenReady's file, turn this off: %2\$s.", 'genready' ),
+			(string) ( $check['owner']['plugin'] ?? '' ),
+			(string) ( $check['owner']['setting'] ?? '' )
+		);
 	}
 
 	/**

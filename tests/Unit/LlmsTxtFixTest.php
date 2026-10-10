@@ -32,6 +32,12 @@ class RecordingLlmsFix extends LlmsTxtFix {
 	public $emitted = null;
 	/** @var bool|null */
 	public $body = null;
+	/** @var bool Whether the headers count as sent. PHPUnit has printed output, so the real check says yes. */
+	public $sent = false;
+
+	protected function headers_already_sent(): bool {
+		return $this->sent;
+	}
 
 	protected function emit( string $content, bool $with_body = true ): void {
 		$this->emitted = $content;
@@ -462,5 +468,43 @@ class LlmsTxtFixTest extends TestCase {
 		$r = $this->fixFor( '/' )->apply( $this->preview( '# X', null ) );
 		$this->assertSame( 'GenReady could not save the fix. Try again.', $r['error'] );
 		$this->assertSame( array(), $this->caches->calls );
+	}
+
+	// Fix round A, G6: serve() yields to an SEO plugin and to sent headers.
+
+	public function test_serve_yields_to_an_seo_plugin_that_makes_llms_txt(): void {
+		$this->store->put( 'llms', array( 'mode' => 'virtual', 'content' => '# Example' ) );
+		$this->seo->owner = array( 'plugin' => 'Yoast SEO', 'setting' => 'Yoast SEO → Settings' );
+		$fix              = $this->fixFor( '/llms.txt' );
+		$fix->serve( null );
+		$this->assertNull( $fix->emitted );
+	}
+
+	public function test_serve_yields_when_the_seo_check_fails(): void {
+		$this->store->put( 'llms', array( 'mode' => 'virtual', 'content' => '# Example' ) );
+		$this->seo->throws = true;
+		$fix               = $this->fixFor( '/llms.txt' );
+		$fix->serve( null );
+		$this->assertNull( $fix->emitted );
+	}
+
+	public function test_serve_does_nothing_after_the_headers_were_sent(): void {
+		$this->store->put( 'llms', array( 'mode' => 'virtual', 'content' => '# Example' ) );
+		$fix       = $this->fixFor( '/llms.txt' );
+		$fix->sent = true;
+		$fix->serve( null );
+		$this->assertNull( $fix->emitted );
+	}
+
+	public function test_serve_checks_the_seo_plugins_only_for_llms_txt(): void {
+		$this->store->put( 'llms', array( 'mode' => 'virtual', 'content' => '# Example' ) );
+		$this->seo->throws = true;
+		$fix               = $this->fixFor( '/other' );
+		$fix->serve( null );
+		$this->assertNull( $fix->emitted );
+		$this->seo->throws = false;
+		$fix               = $this->fixFor( '/llms.txt' );
+		$fix->serve( null );
+		$this->assertSame( '# Example', $fix->emitted );
 	}
 }

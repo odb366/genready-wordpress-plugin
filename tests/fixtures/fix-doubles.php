@@ -100,13 +100,35 @@ class TempFilesystem {
 	public $corrupt = false;
 	/** @var array */
 	public $modes = array();
+	/** @var string[] Paths that put_contents() wrote. */
+	public $paths = array();
+	/** @var bool When true, put_contents() fails. */
+	public $fail_put = false;
+	/** @var bool When true, move() fails. */
+	public $fail_move = false;
+	/** @var array[] array( source, destination, overwrite ) of each move. */
+	public $moves = array();
 
 	public function put_contents( $path, $content, $mode = false ) {
 		$this->modes[] = $mode;
+		$this->paths[] = $path;
+		if ( $this->fail_put ) {
+			file_put_contents( $path, substr( $content, 0, 1 ) );
+			return false;
+		}
 		if ( $this->corrupt ) {
 			$content .= 'X';
 		}
 		return false !== file_put_contents( $path, $content );
+	}
+
+	/** Like WP_Filesystem_Direct::move(): delete the destination when overwriting, then rename. */
+	public function move( $source, $destination, $overwrite = false ) {
+		$this->moves[] = array( $source, $destination, $overwrite );
+		if ( $this->fail_move || ( ! $overwrite && file_exists( $destination ) ) ) {
+			return false;
+		}
+		return rename( $source, $destination );
 	}
 
 	public function delete( $path ) {

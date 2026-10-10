@@ -25,32 +25,34 @@ class PluginTest extends TestCase {
 		$this->assertSame( 'https://genready.ai', GENREADY_API_BASE );
 	}
 
-	public function test_boot_registers_hooks_and_exposes_the_connectors(): void {
+	public function test_boot_registers_hooks_and_exposes_oauth(): void {
 		Monkey\Functions\when( 'add_filter' )->justReturn( true );
 		Monkey\Functions\expect( 'add_action' )->atLeast()->twice();
 		$plugin = \GenReady\Plugin::instance();
 		$plugin->boot();
+		// The browser tests' helper plugin refreshes the token through oauth().
 		$this->assertInstanceOf( \GenReady\Connection\OAuth::class, $plugin->oauth() );
-		$this->assertInstanceOf( \GenReady\Connection\ApiKey::class, $plugin->api_key() );
-		$this->assertInstanceOf( \GenReady\Api\Client::class, $plugin->client() );
-		$this->assertInstanceOf( \GenReady\Connection\TokenStore::class, $plugin->store() );
+	}
+
+	public function test_only_the_oauth_accessor_is_public(): void {
+		foreach ( array( 'store', 'client', 'api_key', 'meta_tag', 'caches', 'site_setup', 'fixes', 'files', 'robots', 'llms', 'jsonld' ) as $accessor ) {
+			$this->assertFalse( method_exists( \GenReady\Plugin::class, $accessor ), $accessor );
+		}
 	}
 
 	public function test_boot_hooks_the_robots_filter_last_without_loading_the_connection(): void {
 		Monkey\Functions\expect( 'get_option' )->never();
 		Monkey\Filters\expectAdded( 'robots_txt' )->once()->with( \Mockery::type( 'array' ), PHP_INT_MAX, 2 );
-		$plugin = \GenReady\Plugin::instance();
-		$plugin->boot();
-		$this->assertInstanceOf( \GenReady\Fixes\RobotsFix::class, $plugin->robots() );
+		\GenReady\Plugin::instance()->boot();
+		$this->addToAssertionCount( \Mockery::getContainer()->mockery_getExpectationCount() );
 	}
 
 	public function test_boot_hooks_llms_serving_first_without_loading_the_connection(): void {
 		Monkey\Functions\expect( 'get_option' )->never();
 		Monkey\Functions\when( 'add_filter' )->justReturn( true );
 		Monkey\Actions\expectAdded( 'parse_request' )->once()->with( \Mockery::type( 'array' ), 0 );
-		$plugin = \GenReady\Plugin::instance();
-		$plugin->boot();
-		$this->assertInstanceOf( \GenReady\Fixes\LlmsTxtFix::class, $plugin->llms() );
+		\GenReady\Plugin::instance()->boot();
+		$this->addToAssertionCount( \Mockery::getContainer()->mockery_getExpectationCount() );
 	}
 
 	public function test_boot_hooks_the_jsonld_output_without_loading_the_connection(): void {
@@ -62,9 +64,8 @@ class PluginTest extends TestCase {
 		Monkey\Filters\expectAdded( 'wpseo_schema_graph' )->once()->with( \Mockery::type( 'array' ), 99 );
 		Monkey\Filters\expectAdded( 'rank_math/json_ld' )->once()->with( \Mockery::type( 'array' ), 99 );
 		Monkey\Filters\expectAdded( 'aioseo_schema_output' )->once()->with( \Mockery::type( 'array' ), 99 );
-		$plugin = \GenReady\Plugin::instance();
-		$plugin->boot();
-		$this->assertInstanceOf( \GenReady\Fixes\JsonLdFix::class, $plugin->jsonld() );
+		\GenReady\Plugin::instance()->boot();
+		$this->addToAssertionCount( \Mockery::getContainer()->mockery_getExpectationCount() );
 	}
 
 	public function test_boot_registers_the_admin_page_and_routes_without_loading_the_connection(): void {

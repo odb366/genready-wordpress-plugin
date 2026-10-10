@@ -252,4 +252,37 @@ class FileWriterTest extends TestCase {
 		$this->assertTrue( $files->delete( 'robots.txt' ) );
 		$this->assertFileDoesNotExist( $this->dir . 'robots.txt' );
 	}
+
+	// Fix round A, G6: write through a temp file in the same folder, then move it.
+
+	private function temp_files(): array {
+		return array_values( preg_grep( '/^\.genready-tmp-/', (array) scandir( $this->dir ) ) );
+	}
+
+	public function test_write_goes_through_a_temp_file_in_the_same_folder(): void {
+		file_put_contents( $this->dir . 'robots.txt', 'OLD' );
+		$this->assertTrue( $this->writer()->write( 'robots.txt', 'NEW' ) );
+		$this->assertSame( 'NEW', file_get_contents( $this->dir . 'robots.txt' ) );
+		$this->assertCount( 1, $this->fs->paths );
+		$this->assertMatchesRegularExpression( '#^' . preg_quote( $this->dir, '#' ) . '\.genready-tmp-[A-Za-z0-9]+$#', $this->fs->paths[0] );
+		$this->assertSame( array( array( $this->fs->paths[0], $this->dir . 'robots.txt', true ) ), $this->fs->moves );
+		$this->assertSame( array(), $this->temp_files() );
+	}
+
+	public function test_failed_move_keeps_the_old_file_and_removes_the_temp_file(): void {
+		file_put_contents( $this->dir . 'robots.txt', 'OLD' );
+		$this->fs->fail_move = true;
+		$this->assertFalse( $this->writer()->write( 'robots.txt', 'NEW' ) );
+		$this->assertSame( 'OLD', file_get_contents( $this->dir . 'robots.txt' ) );
+		$this->assertSame( array(), $this->temp_files() );
+	}
+
+	public function test_failed_temp_write_keeps_the_old_file_and_removes_the_temp_file(): void {
+		file_put_contents( $this->dir . 'robots.txt', 'OLD' );
+		$this->fs->fail_put = true;
+		$this->assertFalse( $this->writer()->write( 'robots.txt', 'NEW' ) );
+		$this->assertSame( 'OLD', file_get_contents( $this->dir . 'robots.txt' ) );
+		$this->assertSame( array(), $this->fs->moves );
+		$this->assertSame( array(), $this->temp_files() );
+	}
 }

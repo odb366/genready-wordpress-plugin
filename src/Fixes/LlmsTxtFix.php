@@ -347,7 +347,9 @@ class LlmsTxtFix {
 	/**
 	 * The parse_request action, at priority 0. It answers GET and HEAD requests
 	 * for exactly /llms.txt under the home path, and only while a virtual fix is
-	 * stored. It uses local data only: no connection, no API, no writes.
+	 * stored, no SEO plugin makes llms.txt (and that check worked), and no
+	 * headers were sent yet. It uses local data only: no connection, no API,
+	 * no writes.
 	 *
 	 * @param mixed $wp The WP object. Not used.
 	 */
@@ -368,10 +370,22 @@ class LlmsTxtFix {
 			if ( 'virtual' !== ( $fix['mode'] ?? '' ) || ! is_string( $content ) || '' === $content ) {
 				return;
 			}
+			// An SEO plugin that makes llms.txt always wins, also one turned on after the fix.
+			$check = $this->seo_owner();
+			if ( $check['unknown'] || is_array( $check['owner'] ) || $this->headers_already_sent() ) {
+				return;
+			}
 			$this->emit( $content, 'HEAD' !== $method );
 		} catch ( \Throwable $e ) {
 			return;
 		}
+	}
+
+	/**
+	 * Tell whether the headers were sent. Tests replace it: PHPUnit prints output first.
+	 */
+	protected function headers_already_sent(): bool {
+		return headers_sent();
 	}
 
 	/**

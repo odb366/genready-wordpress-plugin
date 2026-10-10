@@ -79,6 +79,13 @@ class RobotsFix {
 	 * @var string|null
 	 */
 	private $content_type = null;
+	/**
+	 * True when the last base() saw do_robots() print more than the filter
+	 * output, for example text a plugin prints on the do_robotstxt action.
+	 *
+	 * @var bool
+	 */
+	private $extra_output = false;
 
 	/**
 	 * Build the fix.
@@ -130,6 +137,7 @@ class RobotsFix {
 	 * its input and changes nothing.
 	 */
 	public function base(): string {
+		$this->extra_output = false;
 		if ( 'file' === $this->mode() ) {
 			return (string) $this->files->read( self::FILE );
 		}
@@ -145,6 +153,11 @@ class RobotsFix {
 		ob_start();
 		try {
 			do_robots();
+			while ( ob_get_level() > $level + 1 ) {
+				ob_end_flush();
+			}
+			// Crawlers get everything do_robots() prints, so it must be the checked base and nothing more.
+			$this->extra_output = (string) ob_get_contents() !== $this->captured;
 		} finally {
 			while ( ob_get_level() > $level ) {
 				ob_end_clean();
@@ -203,6 +216,9 @@ class RobotsFix {
 			return array( 'error' => $this->unreadable() );
 		}
 		$base = $this->base();
+		if ( $this->extra_output ) {
+			return array( 'error' => $this->extra_text() );
+		}
 		if ( strlen( $base ) > self::MAX_BASE_BYTES ) {
 			return array( 'error' => __( 'robots.txt is too large for GenReady to check.', 'genready' ) );
 		}
@@ -272,7 +288,11 @@ class RobotsFix {
 		if ( $preview['external'] ) {
 			return array( 'error' => __( 'Your host or CDN serves its own robots.txt, so changes in WordPress do not reach visitors. Change it where your host or CDN manages it.', 'genready' ) );
 		}
-		if ( ! hash_equals( $preview['base_sha256'], hash( 'sha256', $this->base() ) ) ) {
+		$base = $this->base();
+		if ( $this->extra_output ) {
+			return array( 'error' => $this->extra_text() );
+		}
+		if ( ! hash_equals( $preview['base_sha256'], hash( 'sha256', $base ) ) ) {
 			return array( 'error' => $changed );
 		}
 		if ( 'file' === $mode ) {
@@ -577,6 +597,13 @@ class RobotsFix {
 	 */
 	private function root_unknown(): string {
 		return __( "GenReady cannot find this site's root folder, so it does not change robots.txt.", 'genready' );
+	}
+
+	/**
+	 * Text for a robots.txt that another plugin adds text to outside the filter.
+	 */
+	private function extra_text(): string {
+		return __( 'Another plugin adds text to robots.txt, so GenReady cannot check the result.', 'genready' );
 	}
 
 	/**

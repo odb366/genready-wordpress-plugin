@@ -717,4 +717,28 @@ class RobotsFixTest extends TestCase {
 		$this->assertSame( array( 'ok' => true ), $this->fix()->apply( $this->preview( 'NEW', 'ORIGINAL' ) ) );
 		$this->assertSame( 'NEW', $this->files->read( 'robots.txt' ) );
 	}
+
+	// Fix round A, G6: text printed on do_robotstxt is not part of the checked base.
+
+	public function test_preview_refuses_when_another_plugin_prints_extra_text(): void {
+		$fix = $this->fix();
+		Monkey\Functions\when( 'do_robots' )->alias(
+			function () use ( $fix ) {
+				echo "# Added on do_robotstxt\n";
+				echo $fix->filter( self::BASE, '1' );
+			}
+		);
+		$text = 'Another plugin adds text to robots.txt, so GenReady cannot check the result.';
+		$this->assertSame( array( 'error' => $text ), $fix->preview( true ) );
+		$this->assertSame( array(), $this->client->requests );
+		$this->assertSame( array( 'error' => $text ), $fix->apply( $this->preview( "NEW\n", self::BASE, 'virtual' ) ) );
+		$this->assertSame( array(), $this->store->get( 'robots' ) );
+	}
+
+	public function test_base_without_extra_text_previews_normally(): void {
+		$fix = $this->fix();
+		$this->wordpress_makes( $fix, self::BASE );
+		$this->client->request_result = $this->merge_response( self::BASE, array( 'sha256' => null, 'differsFromBase' => false ) );
+		$this->assertArrayNotHasKey( 'error', $fix->preview( true ) );
+	}
 }

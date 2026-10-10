@@ -85,7 +85,9 @@ class FileWriter {
 	}
 
 	/**
-	 * Write the file, then read it back and compare the hash.
+	 * Write the file through a temp file in the same folder, move it into
+	 * place, then read it back and compare the hash. A failed step leaves the
+	 * old file and no temp file.
 	 *
 	 * @param string $name    File name from ALLOWED.
 	 * @param string $content New content.
@@ -102,7 +104,9 @@ class FileWriter {
 			return false;
 		}
 		$mode = defined( 'FS_CHMOD_FILE' ) ? FS_CHMOD_FILE : 0644;
-		if ( ! $filesystem->put_contents( $path, $content, $mode ) ) {
+		$temp = dirname( $path ) . '/.genready-tmp-' . bin2hex( random_bytes( 8 ) );
+		if ( ! $filesystem->put_contents( $temp, $content, $mode ) || ! $filesystem->move( $temp, $path, true ) ) {
+			$filesystem->delete( $temp );
 			return false;
 		}
 		clearstatcache( true, $path );

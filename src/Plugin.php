@@ -44,71 +44,11 @@ final class Plugin {
 	 */
 	private $store = null;
 	/**
-	 * API client.
-	 *
-	 * @var Client|null
-	 */
-	private $client = null;
-	/**
 	 * OAuth connector.
 	 *
 	 * @var OAuth|null
 	 */
 	private $oauth = null;
-	/**
-	 * API key connector.
-	 *
-	 * @var ApiKey|null
-	 */
-	private $api_key = null;
-	/**
-	 * Verification meta tag.
-	 *
-	 * @var MetaTag|null
-	 */
-	private $meta_tag = null;
-	/**
-	 * Page cache purger.
-	 *
-	 * @var Caches|null
-	 */
-	private $caches = null;
-	/**
-	 * Verification and first scan.
-	 *
-	 * @var SiteSetup|null
-	 */
-	private $site_setup = null;
-	/**
-	 * Fix storage.
-	 *
-	 * @var FixStore|null
-	 */
-	private $fixes = null;
-	/**
-	 * Files in the site root.
-	 *
-	 * @var FileWriter|null
-	 */
-	private $files = null;
-	/**
-	 * The robots.txt fix.
-	 *
-	 * @var RobotsFix|null
-	 */
-	private $robots = null;
-	/**
-	 * The llms.txt fix.
-	 *
-	 * @var LlmsTxtFix|null
-	 */
-	private $llms = null;
-	/**
-	 * The JSON-LD fix.
-	 *
-	 * @var JsonLdFix|null
-	 */
-	private $jsonld = null;
 
 	/**
 	 * Return the single instance.
@@ -126,135 +66,58 @@ final class Plugin {
 	public function boot(): void {
 		$this->store = new TokenStore();
 		// The client needs the refresh callable and OAuth needs the client, so the callable looks OAuth up when it runs.
-		$this->client  = new Client(
+		$client      = new Client(
 			$this->store,
 			function (): bool {
 				return $this->oauth->refresh();
 			}
 		);
-		$this->oauth   = new OAuth( $this->store, $this->client );
-		$this->api_key = new ApiKey( $this->store, $this->client );
+		$this->oauth = new OAuth( $this->store, $client );
+		$api_key     = new ApiKey( $this->store, $client );
 
-		$this->meta_tag   = new MetaTag();
-		$this->caches     = new Caches();
-		$this->site_setup = new SiteSetup( $this->store, $this->client, $this->meta_tag, $this->caches );
-		add_action( 'wp_head', array( $this->meta_tag, 'render' ), 1 );
+		$meta_tag   = new MetaTag();
+		$caches     = new Caches();
+		$site_setup = new SiteSetup( $this->store, $client, $meta_tag, $caches );
+		add_action( 'wp_head', array( $meta_tag, 'render' ), 1 );
 
-		$this->fixes = new FixStore();
-		$this->files = new FileWriter();
+		$fixes = new FixStore();
+		$files = new FileWriter();
 		// The domain ID is read only when a preview runs, so serving robots.txt or llms.txt never decrypts the connection.
-		$domain_id    = function (): string {
+		$domain_id = function (): string {
 			$connection = $this->store->load();
 			$domain_id  = is_array( $connection ) ? ( $connection['domain_id'] ?? '' ) : '';
 			return is_string( $domain_id ) ? $domain_id : '';
 		};
-		$seo          = new SeoPlugins( $this->files );
-		$this->robots = new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, $domain_id );
-		$this->llms   = new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, $seo, $domain_id );
-		$this->jsonld = new JsonLdFix( $this->fixes, $this->client, $this->caches, $seo, $domain_id );
-		add_filter( 'robots_txt', array( $this->robots, 'filter' ), PHP_INT_MAX, 2 );
-		add_action( 'parse_request', array( $this->llms, 'serve' ), 0 );
-		add_action( 'init', array( $this->jsonld, 'register_meta' ) );
-		add_action( 'wp_head', array( $this->jsonld, 'print_script' ), 20 );
+		$seo       = new SeoPlugins( $files );
+		$robots    = new RobotsFix( $fixes, $files, $client, $caches, $domain_id );
+		$llms      = new LlmsTxtFix( $fixes, $files, $client, $caches, $seo, $domain_id );
+		$jsonld    = new JsonLdFix( $fixes, $client, $caches, $seo, $domain_id );
+		add_filter( 'robots_txt', array( $robots, 'filter' ), PHP_INT_MAX, 2 );
+		add_action( 'parse_request', array( $llms, 'serve' ), 0 );
+		add_action( 'init', array( $jsonld, 'register_meta' ) );
+		add_action( 'wp_head', array( $jsonld, 'print_script' ), 20 );
 		// Late, so the node meets every node the SEO plugin and other plugins added.
-		add_filter( SeoPlugins::SCHEMA_FILTERS['yoast'], array( $this->jsonld, 'yoast' ), 99 );
-		add_filter( SeoPlugins::SCHEMA_FILTERS['rankmath'], array( $this->jsonld, 'rankmath' ), 99 );
-		add_filter( SeoPlugins::SCHEMA_FILTERS['aioseo'], array( $this->jsonld, 'aioseo' ), 99 );
+		add_filter( SeoPlugins::SCHEMA_FILTERS['yoast'], array( $jsonld, 'yoast' ), 99 );
+		add_filter( SeoPlugins::SCHEMA_FILTERS['rankmath'], array( $jsonld, 'rankmath' ), 99 );
+		add_filter( SeoPlugins::SCHEMA_FILTERS['aioseo'], array( $jsonld, 'aioseo' ), 99 );
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_init', array( $this, 'maybe_handle_oauth_callback' ) );
 		add_action( 'admin_init', array( $this, 'register_privacy_text' ) );
 
 		// The admin page and its REST routes. Building them makes no call and reads no option.
-		$reports = new Reports( $this->store, $this->client );
-		$cards   = new FixCards( $this->fixes, $this->robots, $this->llms, $this->jsonld, $this->files );
-		$rest    = new Rest( $this->store, $this->client, $this->oauth, $this->api_key, $this->site_setup, $this->meta_tag, $this->caches, $reports, $cards );
+		$reports = new Reports( $this->store, $client );
+		$cards   = new FixCards( $fixes, $robots, $llms, $jsonld, $files );
+		$rest    = new Rest( $this->store, $client, $this->oauth, $api_key, $site_setup, $meta_tag, $caches, $reports, $cards );
 		add_action( 'rest_api_init', array( $rest, 'register' ) );
 		( new Page( $this->store, $reports, $cards ) )->register();
 	}
 
 	/**
-	 * Token storage.
-	 */
-	public function store(): TokenStore {
-		return $this->store;
-	}
-
-	/**
-	 * API client.
-	 */
-	public function client(): Client {
-		return $this->client;
-	}
-
-	/**
-	 * OAuth connector.
+	 * OAuth connector. The browser tests' helper plugin uses it to refresh the token.
 	 */
 	public function oauth(): OAuth {
 		return $this->oauth;
-	}
-
-	/**
-	 * API key connector.
-	 */
-	public function api_key(): ApiKey {
-		return $this->api_key;
-	}
-
-	/**
-	 * Verification meta tag.
-	 */
-	public function meta_tag(): MetaTag {
-		return $this->meta_tag;
-	}
-
-	/**
-	 * Page cache purger.
-	 */
-	public function caches(): Caches {
-		return $this->caches;
-	}
-
-	/**
-	 * Verification and first scan.
-	 */
-	public function site_setup(): SiteSetup {
-		return $this->site_setup;
-	}
-
-	/**
-	 * Fix storage.
-	 */
-	public function fixes(): FixStore {
-		return $this->fixes;
-	}
-
-	/**
-	 * Files in the site root.
-	 */
-	public function files(): FileWriter {
-		return $this->files;
-	}
-
-	/**
-	 * The robots.txt fix.
-	 */
-	public function robots(): RobotsFix {
-		return $this->robots;
-	}
-
-	/**
-	 * The llms.txt fix.
-	 */
-	public function llms(): LlmsTxtFix {
-		return $this->llms;
-	}
-
-	/**
-	 * The JSON-LD fix.
-	 */
-	public function jsonld(): JsonLdFix {
-		return $this->jsonld;
 	}
 
 	/**

@@ -662,4 +662,30 @@ class RestTest extends TestCase {
 		$this->assertSame( array(), $this->transients );
 		$this->assertSame( 'd1', $this->store->load()['domain_id'] );
 	}
+
+	// Fix round A, G6: the applied llms.txt card shows an SEO plugin that took over.
+
+	public function test_applied_llms_card_shows_an_seo_plugin_that_took_over(): void {
+		$seo   = new class( $this->files ) extends SeoPlugins {
+			/** @var bool */
+			public $throws = false;
+			public function llms_txt_owner() {
+				if ( $this->throws ) {
+					throw new \RuntimeException( 'boom' );
+				}
+				return array( 'plugin' => 'Yoast SEO', 'setting' => 'Yoast SEO → Settings → Site features → AI tools → llms.txt' );
+			}
+		};
+		$cards = new FixCards( $this->fixes, new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, 'd1' ), new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, $seo, 'd1' ), new JsonLdFix( $this->fixes, $this->client, $this->caches, $seo, 'd1' ), $this->files );
+		$this->fixes->put( 'llms', array( 'mode' => 'virtual', 'content' => 'L', 'base_sha256' => str_repeat( 'a', 64 ), 'status' => 'applied' ) );
+		$card = $cards->card( 'llms' );
+		$this->assertSame( 'needs_review', $card['state'] );
+		$this->assertSame( 'Needs review', $card['state_text'] );
+		$this->assertSame( "Yoast SEO makes llms.txt now, so visitors get its file, not GenReady's. To use GenReady's file, turn this off: Yoast SEO → Settings → Site features → AI tools → llms.txt.", $card['message'] );
+		$this->assertTrue( $card['applied'], 'undo stays available' );
+		$seo->throws = true;
+		$card        = $cards->card( 'llms' );
+		$this->assertSame( 'needs_review', $card['state'] );
+		$this->assertSame( "GenReady could not check whether another plugin makes llms.txt, so WordPress does not serve GenReady's file now. Try again later.", $card['message'] );
+	}
 }
