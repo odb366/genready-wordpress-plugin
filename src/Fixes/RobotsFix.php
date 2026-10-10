@@ -88,6 +88,13 @@ class RobotsFix {
 	private $extra_output = false;
 
 	/**
+	 * Shared file and record work, built on first use.
+	 *
+	 * @var FileBackedFix|null
+	 */
+	private $file_fix = null;
+
+	/**
 	 * Build the fix.
 	 *
 	 * @param FixStore        $store     Fix storage.
@@ -295,23 +302,9 @@ class RobotsFix {
 		if ( ! hash_equals( $preview['base_sha256'], hash( 'sha256', $base ) ) ) {
 			return array( 'error' => $changed );
 		}
-		if ( 'file' === $mode ) {
-			$result = $this->apply_file( $preview );
-			if ( isset( $result['error'] ) ) {
-				return $result;
-			}
-		} else {
-			$saved = $this->store->put(
-				self::KIND,
-				array(
-					'mode'        => 'virtual',
-					'content'     => $preview['content'],
-					'base_sha256' => $preview['base_sha256'],
-				)
-			);
-			if ( ! $saved ) {
-				return array( 'error' => __( 'GenReady could not save the fix. Try again.', 'genready' ) );
-			}
+		$result = 'file' === $mode ? $this->file_fix()->apply_file( $preview ) : $this->file_fix()->apply_virtual( $preview['content'], $preview['base_sha256'] );
+		if ( isset( $result['error'] ) ) {
+			return $result;
 		}
 		$this->purge();
 		return array( 'ok' => true );
@@ -346,17 +339,9 @@ class RobotsFix {
 	 * @return array array( 'ok' => true ) or array( 'error' => string ).
 	 */
 	public function undo(): array {
-		$fix = $this->store->get( self::KIND );
-		if ( array() === $fix ) {
-			return array( 'error' => __( 'There is nothing to undo.', 'genready' ) );
-		}
-		if ( 'file' === ( $fix['mode'] ?? '' ) ) {
-			$result = $this->undo_file( $fix );
-			if ( isset( $result['error'] ) ) {
-				return $result;
-			}
-		} else {
-			$this->undo_virtual( $fix );
+		$result = $this->file_fix()->undo();
+		if ( isset( $result['error'] ) ) {
+			return $result;
 		}
 		$this->purge();
 		return array( 'ok' => true );
@@ -399,128 +384,6 @@ class RobotsFix {
 		} catch ( \Throwable $e ) {
 			return $output;
 		}
-	}
-
-	/**
-	 * Write the file in file mode. The original is stored before the write.
-	 * When a file record exists and the file still holds what GenReady wrote,
-	 * the first original (the file before GenReady) is kept.
-	 *
-	 * @param array $preview Checked preview.
-	 * @return array array( 'ok' => true ) or array( 'error' => string, 'code' => CANNOT_WRITE|WRITE_FAILED ).
-	 */
-	private function apply_file( array $preview ): array {
-		if ( ! $this->files->can_write( self::FILE ) ) {
-			return array(
-				'error' => __( "WordPress cannot write robots.txt on this server. Download the file and upload it to your site's root folder.", 'genready' ),
-				'code'  => 'CANNOT_WRITE',
-			);
-		}
-		$previous = $this->store->get( self::KIND );
-		$current  = $this->files->read( self::FILE );
-		if ( null === $current && $this->files->exists( self::FILE ) ) {
-			// Never replace a file whose content GenReady could not read and the server did not check.
-			return array( 'error' => $this->unreadable() );
-		}
-		$original = $current;
-		if ( 'file' === ( $previous['mode'] ?? '' ) && array_key_exists( 'original', $previous ) && $this->holds_written( $current, $previous ) ) {
-			$original = is_string( $previous['original'] ) ? $previous['original'] : null;
-		}
-		$saved = $this->store->put(
-			self::KIND,
-			array(
-				'mode'           => 'file',
-				'content'        => $preview['content'],
-				'base_sha256'    => $preview['base_sha256'],
-				'original'       => $original,
-				'written_sha256' => hash( 'sha256', $preview['content'] ),
-			)
-		);
-		if ( ! $saved ) {
-			// Without the stored original, undo could not put the file back.
-			return array( 'error' => __( 'GenReady could not save its backup of robots.txt, so it did not change the file.', 'genready' ) );
-		}
-		if ( $this->files->write( self::FILE, $preview['content'] ) ) {
-			return array( 'ok' => true );
-		}
-		// The write failed or left other bytes. Put the old file back (a
-		// truncated robots.txt opens the site to every crawler) and the old record.
-		if ( null === $current ) {
-			$this->files->delete( self::FILE );
-		} elseif ( $this->files->read( self::FILE ) !== $current ) {
-			$this->files->write( self::FILE, $current );
-		}
-		if ( array() === $previous ) {
-			$this->store->remove( self::KIND );
-		} else {
-			$this->store->replace( self::KIND, $previous );
-		}
-		return array(
-			'error' => __( "WordPress could not write robots.txt correctly. Check the file on your server, then download the new file and upload it to your site's root folder.", 'genready' ),
-			'code'  => 'WRITE_FAILED',
-		);
-	}
-
-	/**
-	 * Put the file back as it was before GenReady first wrote it.
-	 *
-	 * @param array $fix Stored file record.
-	 * @return array array( 'ok' => true ) or array( 'error' => string ).
-	 */
-	private function undo_file( array $fix ): array {
-		if ( ! $this->files->root_known() ) {
-			return array( 'error' => $this->root_unknown() );
-		}
-		if ( ! $this->holds_written( $this->files->read( self::FILE ), $fix ) ) {
-			return array( 'error' => __( 'robots.txt was edited after GenReady changed it, so GenReady did not undo it. Check the file yourself.', 'genready' ) );
-		}
-		$original = $fix['original'] ?? null;
-		$done     = is_string( $original ) ? $this->files->write( self::FILE, $original ) : $this->files->delete( self::FILE );
-		if ( ! $done ) {
-			return array( 'error' => __( 'WordPress could not change robots.txt, so GenReady did not undo it. Check the file yourself.', 'genready' ) );
-		}
-		$this->store->remove( self::KIND );
-		return array( 'ok' => true );
-	}
-
-	/**
-	 * Restore the previous virtual record, or remove the fix.
-	 *
-	 * @param array $fix Stored record.
-	 */
-	private function undo_virtual( array $fix ): void {
-		$versions = is_array( $fix['versions'] ?? null ) ? array_values( $fix['versions'] ) : array();
-		$previous = array_pop( $versions );
-		$valid    = is_array( $previous )
-			&& 'virtual' === ( $previous['mode'] ?? '' )
-			&& is_string( $previous['content'] ?? null ) && '' !== $previous['content']
-			&& is_string( $previous['base_sha256'] ?? null ) && '' !== $previous['base_sha256'];
-		if ( ! $valid ) {
-			// No earlier virtual record (or an earlier file record, which a
-			// virtual site cannot serve): go back to WordPress's own output.
-			$this->store->remove( self::KIND );
-			return;
-		}
-		$this->store->replace(
-			self::KIND,
-			array(
-				'mode'        => 'virtual',
-				'content'     => $previous['content'],
-				'base_sha256' => $previous['base_sha256'],
-				'versions'    => $versions,
-			)
-		);
-	}
-
-	/**
-	 * Tell whether the file holds exactly what GenReady wrote.
-	 *
-	 * @param string|null $current Current file content.
-	 * @param array       $fix     Stored file record.
-	 */
-	private function holds_written( ?string $current, array $fix ): bool {
-		$written = $fix['written_sha256'] ?? null;
-		return null !== $current && is_string( $written ) && hash_equals( $written, hash( 'sha256', $current ) );
 	}
 
 	/**
@@ -587,6 +450,31 @@ class RobotsFix {
 	 */
 	private function strings( $values ): array {
 		return is_array( $values ) ? array_values( array_filter( $values, 'is_string' ) ) : array();
+	}
+
+	/**
+	 * The file and record work shared with the other file-backed fix. It is
+	 * built on first use, so its texts are translated only when needed.
+	 */
+	private function file_fix(): FileBackedFix {
+		if ( null === $this->file_fix ) {
+			$this->file_fix = new FileBackedFix(
+				$this->store,
+				$this->files,
+				self::KIND,
+				self::FILE,
+				array(
+					'cannot_write' => __( "WordPress cannot write robots.txt on this server. Download the file and upload it to your site's root folder.", 'genready' ),
+					'unreadable'   => $this->unreadable(),
+					'backup'       => __( 'GenReady could not save its backup of robots.txt, so it did not change the file.', 'genready' ),
+					'write_failed' => __( "WordPress could not write robots.txt correctly. Check the file on your server, then download the new file and upload it to your site's root folder.", 'genready' ),
+					'root_unknown' => $this->root_unknown(),
+					'edited'       => __( 'robots.txt was edited after GenReady changed it, so GenReady did not undo it. Check the file yourself.', 'genready' ),
+					'undo_failed'  => __( 'WordPress could not change robots.txt, so GenReady did not undo it. Check the file yourself.', 'genready' ),
+				)
+			);
+		}
+		return $this->file_fix;
 	}
 
 	/**

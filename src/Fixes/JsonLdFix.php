@@ -54,7 +54,6 @@ final class JsonLdFix {
 		'logo'          => 'url',
 	);
 
-
 	/**
 	 * Fix storage, for the home page record.
 	 *
@@ -253,9 +252,6 @@ final class JsonLdFix {
 		return $preview;
 	}
 
-
-
-
 	/**
 	 * Text for a node the plugin refuses to store.
 	 */
@@ -357,7 +353,6 @@ final class JsonLdFix {
 		return null === $target ? null : $this->stored( $target );
 	}
 
-
 	/**
 	 * The wp_head action, at priority 20, when no SEO plugin is active. It
 	 * prints the stored node of the page being viewed, unless the page already
@@ -440,12 +435,6 @@ final class JsonLdFix {
 			return $graph;
 		}
 	}
-
-
-
-
-
-
 
 	/**
 	 * The stored record of the page being viewed: the singular post's meta, or
@@ -626,11 +615,6 @@ final class JsonLdFix {
 		}
 		return null;
 	}
-
-
-
-
-
 
 	/**
 	 * The facts WordPress knows about the target, cleaned to the server's limits.
