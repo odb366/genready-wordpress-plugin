@@ -23,6 +23,11 @@
 	max-width: 1100px;
 }
 
+/* WordPress gives .button display: inline-block, which beats the browser's [hidden] rule. */
+.genready-admin [hidden] {
+	display: none !important;
+}
+
 .genready-admin .genready-card {
 	background: #fff;
 	border: 1px solid var(--genready-border);
