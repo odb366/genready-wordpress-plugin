@@ -68,4 +68,15 @@ class ApiKeyTest extends TestCase {
 		$this->assertSame( array(), $this->client->requests );
 		$this->assertNull( $this->store->load() );
 	}
+
+	public function test_refuses_when_already_connected(): void {
+		Monkey\Functions\expect( 'wp_remote_request' )->never();
+		$this->store->save( array( 'method' => 'oauth', 'access_token' => 'A1', 'refresh_token' => 'R1', 'client_id' => 'cid' ) );
+		$r = ( new ApiKey( $this->store, $this->client ) )->connect( self::KEY, 'example.com' );
+		$this->assertSame( 'Disconnect GenReady first, then add the API key.', $r['error'] );
+		$this->assertSame( array(), $this->client->requests );
+		$saved = $this->store->load();
+		$this->assertSame( 'oauth', $saved['method'] );
+		$this->assertSame( 'R1', $saved['refresh_token'] );
+	}
 }

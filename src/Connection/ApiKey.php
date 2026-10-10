@@ -53,6 +53,9 @@ final class ApiKey {
 		if ( 1 !== preg_match( '/^gr_live_[A-Za-z0-9_-]{16,128}$/', $key ) ) {
 			return array( 'error' => __( 'That is not a GenReady API key. Keys start with gr_live_.', 'genready' ) );
 		}
+		if ( null !== $this->store->load() ) {
+			return array( 'error' => __( 'Disconnect GenReady first, then add the API key.', 'genready' ) );
+		}
 		if ( '' === $hostname ) {
 			$hostname = Site::hostname();
 		}
