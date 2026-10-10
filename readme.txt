@@ -57,6 +57,7 @@ What the plugin sends, and when:
 * The title, the author display name, the dates and the type of one post or page. When you preview the JSON-LD fix for it.
 * The path and a hash of a file you applied. When you click "Check the live file". GenReady then fetches that public file from your site.
 * The API key you paste. When you use an API key instead of Connect. The plugin stores it encrypted.
+* No data, but a request for your public pages: when you verify the site or start a scan, GenReady fetches your home page (and robots.txt) from the public internet, like a crawler.
 
 The plugin stores your connection tokens encrypted in your WordPress database. When you disconnect, it sends a revoke request to GenReady and deletes the tokens.
 
@@ -66,7 +67,7 @@ Read the terms of service at https://genready.ai/terms and the privacy policy at
 
 1. Install the plugin from Plugins, Add New, or upload the folder to `/wp-content/plugins/`.
 2. Activate it.
-3. Open GenReady in the admin menu and click "Connect to GenReady". Sign in or create a free account.
+3. Go to Settings, GenReady and click "Connect to GenReady". Sign in or create a free account.
 4. The plugin adds a verification tag to your home page and starts the first scan.
 
 If GenReady cannot reach your site, use "Use an API key". Create a key for one site on genready.ai and paste it.
