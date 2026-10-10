@@ -57,7 +57,7 @@ What the plugin sends, and when:
 * The title, the author display name, the dates and the type of one post or page. When you preview the JSON-LD fix for it.
 * The path and a hash of a file you applied. When you click "Check the live file". GenReady then fetches that public file from your site.
 * The API key you paste. When you use an API key instead of Connect. The plugin stores it encrypted.
-* No data, but a request for your public pages: when you verify the site or start a scan, GenReady fetches your home page (and robots.txt) from the public internet, like a crawler.
+* Nothing more when you verify the site or start a scan. GenReady then fetches your public home page and robots.txt from the internet, like a crawler.
 
 The plugin stores your connection tokens encrypted in your WordPress database. When you disconnect, it sends a revoke request to GenReady and deletes the tokens.
 
