@@ -9,8 +9,11 @@ namespace GenReady;
 
 use GenReady\Api\Client;
 use GenReady\Connection\ApiKey;
+use GenReady\Compat\Caches;
 use GenReady\Connection\OAuth;
+use GenReady\Connection\SiteSetup;
 use GenReady\Connection\TokenStore;
+use GenReady\Verification\MetaTag;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -48,6 +51,24 @@ final class Plugin {
 	 * @var ApiKey|null
 	 */
 	private $api_key = null;
+	/**
+	 * Verification meta tag.
+	 *
+	 * @var MetaTag|null
+	 */
+	private $meta_tag = null;
+	/**
+	 * Page cache purger.
+	 *
+	 * @var Caches|null
+	 */
+	private $caches = null;
+	/**
+	 * Verification and first scan.
+	 *
+	 * @var SiteSetup|null
+	 */
+	private $site_setup = null;
 
 	/**
 	 * Return the single instance.
@@ -73,6 +94,11 @@ final class Plugin {
 		);
 		$this->oauth   = new OAuth( $this->store, $this->client );
 		$this->api_key = new ApiKey( $this->store, $this->client );
+
+		$this->meta_tag   = new MetaTag();
+		$this->caches     = new Caches();
+		$this->site_setup = new SiteSetup( $this->store, $this->client, $this->meta_tag, $this->caches );
+		add_action( 'wp_head', array( $this->meta_tag, 'render' ), 1 );
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_init', array( $this, 'maybe_handle_oauth_callback' ) );
@@ -104,6 +130,27 @@ final class Plugin {
 	 */
 	public function api_key(): ApiKey {
 		return $this->api_key;
+	}
+
+	/**
+	 * Verification meta tag.
+	 */
+	public function meta_tag(): MetaTag {
+		return $this->meta_tag;
+	}
+
+	/**
+	 * Page cache purger.
+	 */
+	public function caches(): Caches {
+		return $this->caches;
+	}
+
+	/**
+	 * Verification and first scan.
+	 */
+	public function site_setup(): SiteSetup {
+		return $this->site_setup;
 	}
 
 	/**
