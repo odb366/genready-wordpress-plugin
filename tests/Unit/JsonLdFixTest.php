@@ -146,6 +146,39 @@ class JsonLdFixTest extends TestCase {
 
 	// Plan tests.
 
+	public function test_fills_empty_values_but_keeps_real_ones(): void {
+		// All in One SEO builds CollectionPage with "description" => "" and drops empty values only after the filter.
+		$graph = array(
+			array(
+				'@type'            => 'CollectionPage',
+				'name'             => 'Site name',
+				'description'      => '',
+				'email'            => null,
+				'sameAs'           => array(),
+				'position'         => 0,
+				'isFamilyFriendly' => false,
+			),
+		);
+		$node  = array(
+			'@type'            => 'WebPage',
+			'name'             => 'GenReady name',
+			'description'      => 'GenReady description',
+			'email'            => 'site@example.com',
+			'sameAs'           => array( 'https://example.com/profile' ),
+			'position'         => 3,
+			'isFamilyFriendly' => true,
+		);
+		$out   = JsonLdFix::merge_into_graph( $graph, $node );
+		$this->assertCount( 1, $out );
+		$this->assertSame( 'Site name', $out[0]['name'] );
+		$this->assertSame( 'GenReady description', $out[0]['description'] );
+		$this->assertSame( 'site@example.com', $out[0]['email'] );
+		$this->assertSame( array( 'https://example.com/profile' ), $out[0]['sameAs'] );
+		$this->assertSame( 0, $out[0]['position'] );
+		$this->assertFalse( $out[0]['isFamilyFriendly'] );
+		$this->assertSame( 'CollectionPage', $out[0]['@type'] );
+	}
+
 	public function test_never_overwrites_existing_property(): void {
 		$graph = array(
 			array(

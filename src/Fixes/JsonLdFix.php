@@ -352,7 +352,8 @@ final class JsonLdFix {
 	 * Add a node to a schema graph without a duplicate.
 	 *
 	 * A node of the same type (see types_match()) gets only the properties it
-	 * does not have; no value is ever replaced. An exact type match wins over a
+	 * does not have, or has empty (null, a blank string, an empty list); no
+	 * real value is ever replaced. An exact type match wins over a
 	 * group match. With no match the node is added. '@context' is never added
 	 * to a graph node. Entries that are not arrays with a '@type' are skipped.
 	 * Keys are kept, so the same code merges a list or keyed entities.
@@ -468,11 +469,22 @@ final class JsonLdFix {
 			return $graph;
 		}
 		foreach ( $node as $prop => $value ) {
-			if ( ! array_key_exists( $prop, $graph[ $key ] ) ) {
+			if ( ! array_key_exists( $prop, $graph[ $key ] ) || self::is_empty_value( $graph[ $key ][ $prop ] ) ) {
 				$graph[ $key ][ $prop ] = $value;
 			}
 		}
 		return $graph;
+	}
+
+	/**
+	 * Tell whether a graph value holds nothing: null, a blank string or an
+	 * empty list. All in One SEO sets such values and removes them only after
+	 * its schema filter runs, so they count as missing. 0 and false are values.
+	 *
+	 * @param mixed $value Graph value.
+	 */
+	private static function is_empty_value( $value ): bool {
+		return null === $value || array() === $value || ( is_string( $value ) && '' === trim( $value ) );
 	}
 
 	/**
