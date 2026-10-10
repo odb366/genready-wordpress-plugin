@@ -16,7 +16,7 @@ test('delete the plugin on the Plugins screen: options gone, robots.txt restored
 
 	const tools = await helper(page);
 	expect(await tools.readFile('robots.txt')).toContain('Content-Signal:');
-	expect(await tools.options('genready')).toEqual(expect.arrayContaining(['genready_connection', 'genready_fixes', 'genready_settings']));
+	expect(await tools.options('genready')).toEqual(expect.arrayContaining(['genready_connection', 'genready_fix_robots', 'genready_settings']));
 
 	// Deactivate, then delete.
 	await page.goto('/wp-admin/plugins.php');
