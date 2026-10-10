@@ -265,15 +265,22 @@ class FileWriterTest extends TestCase {
 		$this->assertSame( 'NEW', file_get_contents( $this->dir . 'robots.txt' ) );
 		$this->assertCount( 1, $this->fs->paths );
 		$this->assertMatchesRegularExpression( '#^' . preg_quote( $this->dir, '#' ) . '\.genready-tmp-[A-Za-z0-9]+$#', $this->fs->paths[0] );
-		$this->assertSame( array( array( $this->fs->paths[0], $this->dir . 'robots.txt', true ) ), $this->fs->moves );
 		$this->assertSame( array(), $this->temp_files() );
 	}
 
-	public function test_failed_move_keeps_the_old_file_and_removes_the_temp_file(): void {
+	public function test_the_old_file_is_never_deleted_before_the_new_one_is_in_place(): void {
+		// WP_Filesystem::move() deletes the target first: a crawler could get a 404 robots.txt (allow all) in between.
 		file_put_contents( $this->dir . 'robots.txt', 'OLD' );
-		$this->fs->fail_move = true;
+		$this->assertTrue( $this->writer()->write( 'robots.txt', 'NEW' ) );
+		$this->assertNotContains( $this->dir . 'robots.txt', $this->fs->deleted );
+		$this->assertSame( array(), $this->fs->moves );
+	}
+
+	public function test_failed_rename_keeps_the_target_and_removes_the_temp_file(): void {
+		mkdir( $this->dir . 'robots.txt' );
+		file_put_contents( $this->dir . 'robots.txt/keep', 'x' );
 		$this->assertFalse( $this->writer()->write( 'robots.txt', 'NEW' ) );
-		$this->assertSame( 'OLD', file_get_contents( $this->dir . 'robots.txt' ) );
+		$this->assertDirectoryExists( $this->dir . 'robots.txt' );
 		$this->assertSame( array(), $this->temp_files() );
 	}
 
@@ -282,7 +289,6 @@ class FileWriterTest extends TestCase {
 		$this->fs->fail_put = true;
 		$this->assertFalse( $this->writer()->write( 'robots.txt', 'NEW' ) );
 		$this->assertSame( 'OLD', file_get_contents( $this->dir . 'robots.txt' ) );
-		$this->assertSame( array(), $this->fs->moves );
 		$this->assertSame( array(), $this->temp_files() );
 	}
 }

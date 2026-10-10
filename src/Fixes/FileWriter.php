@@ -85,8 +85,9 @@ class FileWriter {
 	}
 
 	/**
-	 * Write the file through a temp file in the same folder, move it into
-	 * place, then read it back and compare the hash. A failed step leaves the
+	 * Write the file through a temp file in the same folder, rename it over
+	 * the file (an atomic replace: the old file stays until the new one is in
+	 * place), then read it back and compare the hash. A failed step leaves the
 	 * old file and no temp file.
 	 *
 	 * @param string $name    File name from ALLOWED.
@@ -105,7 +106,8 @@ class FileWriter {
 		}
 		$mode = defined( 'FS_CHMOD_FILE' ) ? FS_CHMOD_FILE : 0644;
 		$temp = dirname( $path ) . '/.genready-tmp-' . bin2hex( random_bytes( 8 ) );
-		if ( ! $filesystem->put_contents( $temp, $content, $mode ) || ! $filesystem->move( $temp, $path, true ) ) {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename,WordPress.PHP.NoSilencedErrors.Discouraged -- atomic replace; WP_Filesystem::move deletes the target first. Only the direct method gets here; a failure returns false.
+		if ( ! $filesystem->put_contents( $temp, $content, $mode ) || ! @rename( $temp, $path ) ) {
 			$filesystem->delete( $temp );
 			return false;
 		}
