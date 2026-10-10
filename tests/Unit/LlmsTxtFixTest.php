@@ -202,6 +202,7 @@ class LlmsTxtFixTest extends TestCase {
 		$this->assertSame( "# Example\n", $this->files->read( 'llms.txt' ) );
 		$record = $this->store->get( 'llms' );
 		$this->assertSame( 'file', $record['mode'] );
+		$this->assertArrayNotHasKey( 'status', $record );
 		$this->assertNull( $record['original'] );
 		$this->assertSame( hash( 'sha256', "# Example\n" ), $record['written_sha256'] );
 		$this->assertSame( array( 'https://example.com/llms.txt' ), $this->caches->calls );
@@ -215,6 +216,7 @@ class LlmsTxtFixTest extends TestCase {
 		$this->fixFor( '/' )->apply( $this->preview( "# Example\n", null ) );
 		$this->assertFalse( $this->files->exists( 'llms.txt' ) );
 		$this->assertSame( 'virtual', $this->store->get( 'llms' )['mode'] );
+		$this->assertArrayNotHasKey( 'status', $this->store->get( 'llms' ) );
 	}
 
 	public function test_file_write_is_refused_when_wordpress_cannot_write(): void {

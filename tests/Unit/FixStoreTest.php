@@ -96,15 +96,15 @@ class FixStoreTest extends TestCase {
 		$this->assertSame( 'v7', $store->get( 'robots' )['content'] );
 	}
 
-	public function test_put_status_does_not_add_a_version(): void {
+	public function test_update_does_not_add_a_version(): void {
 		$store = new FixStore();
 		$store->put( 'robots', array( 'content' => 'A' ) );
 		$store->put( 'robots', array( 'content' => 'B' ) );
 		$fix             = $store->get( 'robots' );
-		$fix['status']   = 'needs_review';
+		$fix['live_at']  = 123;
 		$fix['versions'] = array();
-		$this->assertTrue( $store->put_status( 'robots', $fix ) );
-		$this->assertSame( 'needs_review', $store->get( 'robots' )['status'] );
+		$this->assertTrue( $store->update( 'robots', $fix ) );
+		$this->assertSame( 123, $store->get( 'robots' )['live_at'] );
 		$this->assertCount( 1, $store->get( 'robots' )['versions'] );
 	}
 
@@ -139,7 +139,7 @@ class FixStoreTest extends TestCase {
 		$store->put( 'robots', array( 'content' => 'A' ) );
 		$this->broken = array( 'genready_fix_robots' );
 		$this->assertFalse( $store->put( 'robots', array( 'content' => 'B' ) ) );
-		$this->assertFalse( $store->put_status( 'robots', array( 'content' => 'B' ) ) );
+		$this->assertFalse( $store->update( 'robots', array( 'content' => 'B' ) ) );
 		$this->assertFalse( $store->replace( 'robots', array( 'content' => 'B' ) ) );
 		$this->assertFalse( $store->remove( 'robots' ) );
 		$this->assertSame( 'A', $store->get( 'robots' )['content'] );

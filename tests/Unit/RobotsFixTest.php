@@ -105,7 +105,7 @@ class RobotsFixTest extends TestCase {
 	public function test_serves_incoming_output_when_base_changed(): void {
 		$this->store->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', 'old base' ), 'status' => 'applied' ) );
 		$this->assertSame( 'changed by Yoast', $this->fix()->filter( 'changed by Yoast', '1' ) );
-		$this->assertSame( 'applied', $this->store->get( 'robots' )['status'], 'the filter never writes' );
+		$this->assertSame( 'applied', $this->store->get( 'robots' )['status'], 'the filter never writes; an old record keeps its field' );
 	}
 
 	public function test_corrupt_store_fails_safe(): void {
@@ -333,7 +333,7 @@ class RobotsFixTest extends TestCase {
 		$this->assertSame( 'virtual', $stored['mode'] );
 		$this->assertSame( "NEW\n", $stored['content'] );
 		$this->assertSame( hash( 'sha256', self::BASE ), $stored['base_sha256'] );
-		$this->assertSame( 'applied', $stored['status'] );
+		$this->assertArrayNotHasKey( 'status', $stored, 'the card computes the state' );
 		$this->assertSame( array( 'https://example.com/robots.txt' ), $this->caches->calls );
 		$this->assertSame( "NEW\n", $fix->filter( self::BASE, '1' ) );
 	}
@@ -374,7 +374,7 @@ class RobotsFixTest extends TestCase {
 		$this->assertSame( 'A', $stored['content'] );
 		$this->assertSame( hash( 'sha256', 'B1' ), $stored['base_sha256'] );
 		$this->assertSame( 'virtual', $stored['mode'] );
-		$this->assertSame( 'applied', $stored['status'] );
+		$this->assertArrayNotHasKey( 'status', $stored, 'the card computes the state' );
 		$this->assertSame( array(), $stored['versions'] );
 		// The restored record is served only for the base it was checked against.
 		$this->assertSame( 'A', $this->fix()->filter( 'B1', '1' ) );

@@ -306,7 +306,6 @@ class LlmsTxtFix {
 					'mode'        => 'virtual',
 					'content'     => $content,
 					'base_sha256' => $hash,
-					'status'      => 'applied',
 				)
 			);
 			if ( ! $saved ) {
@@ -438,7 +437,6 @@ class LlmsTxtFix {
 				'base_sha256'    => $preview['base_sha256'],
 				'original'       => $original,
 				'written_sha256' => hash( 'sha256', $preview['content'] ),
-				'status'         => 'applied',
 			)
 		);
 		if ( ! $saved ) {
@@ -509,7 +507,6 @@ class LlmsTxtFix {
 				'mode'        => 'virtual',
 				'content'     => $previous['content'],
 				'base_sha256' => $previous['base_sha256'],
-				'status'      => 'applied',
 				'versions'    => $versions,
 			)
 		);

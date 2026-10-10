@@ -650,6 +650,9 @@ class RestTest extends TestCase {
 		$this->assertSame( 'Needs review', $card['state_text'] );
 		$this->assertStringContainsString( 'Preview again', $card['message'] );
 		$this->assertSame( 'applied', $this->fixes->get( 'robots' )['status'], 'the card writes nothing' );
+		// An old record with a stored "needs_review" is read like any other: only the base decides.
+		$this->fixes->put( 'robots', array( 'mode' => 'virtual', 'content' => 'NEW', 'base_sha256' => hash( 'sha256', $output ), 'status' => 'needs_review' ) );
+		$this->assertSame( 'applied', $cards->card( 'robots' )['state'] );
 	}
 
 	// Fix round A, G5 L7.

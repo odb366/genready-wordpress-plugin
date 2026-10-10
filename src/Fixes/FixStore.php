@@ -14,6 +14,11 @@ defined( 'ABSPATH' ) || exit;
  * autoloaded, so one large record never blocks the others. Each record keeps
  * its last 5 earlier records so undo needs no connection. Every write reads
  * the option back and tells whether the record was really stored.
+ *
+ * A record holds the fix (mode, content, base_sha256 and, in file mode,
+ * original and written_sha256), its versions and the last live check. It
+ * stores no state: the admin card works the state out. Older records can
+ * still have a 'status' field. Nothing reads it.
  */
 class FixStore {
 	/** The option of each fix kind. */
@@ -67,7 +72,7 @@ class FixStore {
 	 * @param array  $fix  Updated record.
 	 * @return bool True when the record is stored.
 	 */
-	public function put_status( string $kind, array $fix ): bool {
+	public function update( string $kind, array $fix ): bool {
 		$fix['versions'] = $this->versions( $this->get( $kind ) );
 		return $this->save( $kind, $fix );
 	}

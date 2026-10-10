@@ -533,7 +533,7 @@ final class Rest {
 			),
 		);
 		$record['live_at'] = time();
-		$this->cards->store()->put_status( $kind, $record );
+		$this->cards->store()->update( $kind, $record );
 		return $this->done( $kind );
 	}
 
