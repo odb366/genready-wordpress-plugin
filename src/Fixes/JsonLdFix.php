@@ -38,18 +38,8 @@ final class JsonLdFix {
 	const HOME_KIND = 'jsonld_home';
 	/** Earlier records kept per target. */
 	const MAX_VERSIONS = 5;
-	/** Longest title or author name the server accepts, in UTF-16 code units. */
-	const MAX_TEXT = 300;
-	/** Longest description the form accepts. */
-	const MAX_DESCRIPTION = 500;
 	/** Key of a new node in Rank Math's entities. */
 	const RANK_MATH_KEY = 'genready';
-	/** Prefix of a value the server could not fill. */
-	const TODO = 'TODO: ';
-	/** The only keys a node may have, at every depth. List indexes are not keys. */
-	const KEY_PATTERN = '/^@?[A-Za-z][A-Za-z0-9_:-]{0,63}$/D';
-	/** Largest node, in bytes of wp_json_encode() output. */
-	const MAX_NODE_BYTES = 32768;
 
 	/**
 	 * Properties the preview form can fill, and how each is checked.
@@ -64,17 +54,6 @@ final class JsonLdFix {
 		'logo'          => 'url',
 	);
 
-	/**
-	 * Types that describe the same thing on one page. Two nodes from one group
-	 * would be a duplicate, so a match inside a group counts as the same type.
-	 * FAQPage and QAPage stay out of the page group: they describe the page's
-	 * questions, so they sit next to a WebPage node as their own node.
-	 */
-	const TYPE_GROUPS = array(
-		array( 'Article', 'NewsArticle', 'BlogPosting', 'TechArticle', 'ScholarlyArticle', 'LiveBlogPosting', 'Report' ),
-		array( 'WebPage', 'CollectionPage', 'ProfilePage', 'AboutPage', 'ContactPage', 'ItemPage', 'SearchResultsPage', 'CheckoutPage', 'MedicalWebPage', 'RealEstateListing' ),
-		array( 'Organization', 'Corporation', 'LocalBusiness', 'OnlineBusiness', 'NGO', 'EducationalOrganization', 'NewsMediaOrganization' ),
-	);
 
 	/**
 	 * Fix storage, for the home page record.
@@ -210,11 +189,11 @@ final class JsonLdFix {
 			return $fail;
 		}
 		// Some SEO plugins print the graph without escaping slashes, so a value must never close the script tag.
-		$node = self::clean_node( $node );
+		$node = SchemaNode::clean( $node );
 		if ( null === $node ) {
 			return array( 'error' => $this->uncheckable() );
 		}
-		if ( ! is_string( $type ) || ! in_array( $type, self::node_types( $node ), true ) ) {
+		if ( ! is_string( $type ) || ! in_array( $type, SchemaGraph::node_types( $node ), true ) ) {
 			return $fail;
 		}
 		$existing = $result['existing'] ?? null;
@@ -228,10 +207,10 @@ final class JsonLdFix {
 			'target'         => $target,
 		);
 		if ( isset( $target['home'] ) && 'WebPage' === $type && ! isset( $overrides['description'] ) ) {
-			$overrides['description'] = $this->clean( (string) get_bloginfo( 'description' ), self::MAX_DESCRIPTION );
+			$overrides['description'] = $this->clean( (string) get_bloginfo( 'description' ), SchemaNode::MAX_DESCRIPTION );
 		}
 		$preview = $this->fill( $preview, $overrides );
-		if ( isset( $preview['node'] ) && ! self::fits( $preview['node'] ) ) {
+		if ( isset( $preview['node'] ) && ! SchemaNode::fits( $preview['node'] ) ) {
 			return array( 'error' => $this->uncheckable() );
 		}
 		return $preview;
@@ -249,20 +228,20 @@ final class JsonLdFix {
 	public function fill( array $preview, array $values ): array {
 		$node = is_array( $preview['node'] ?? null ) ? $preview['node'] : array();
 		foreach ( self::FILLABLE as $prop => $rule ) {
-			if ( 1 !== preg_match( self::KEY_PATTERN, $prop ) || ! isset( $values[ $prop ] ) || ! is_string( $values[ $prop ] ) || ! $this->is_todo( $node[ $prop ] ?? null ) ) {
+			if ( 1 !== preg_match( SchemaNode::KEY_PATTERN, $prop ) || ! isset( $values[ $prop ] ) || ! is_string( $values[ $prop ] ) || ! SchemaNode::is_todo( $node[ $prop ] ?? null ) ) {
 				continue;
 			}
-			$value = $this->form_value( $rule, $values[ $prop ] );
+			$value = SchemaNode::form_value( $rule, $values[ $prop ] );
 			if ( null === $value ) {
-				return array( 'error' => $this->bad_value( $rule, $prop ) );
+				return array( 'error' => SchemaNode::bad_value( $rule, $prop ) );
 			}
 			if ( '' !== $value ) {
-				$node[ $prop ] = self::angle_free( $value );
+				$node[ $prop ] = SchemaNode::angle_free( $value );
 			}
 		}
 		$missing = array();
 		foreach ( $node as $prop => $value ) {
-			if ( $this->is_todo( $value ) ) {
+			if ( SchemaNode::is_todo( $value ) ) {
 				$missing[] = (string) $prop;
 			}
 		}
@@ -274,52 +253,8 @@ final class JsonLdFix {
 		return $preview;
 	}
 
-	/**
-	 * Check every key of a node and make every string safe inside a script tag.
-	 * Keys must match KEY_PATTERN at every depth; a list keeps its indexes.
-	 * In every string, '<' becomes '‹' (U+2039) and '>' becomes '›' (U+203A).
-	 *
-	 * @param array $value A node, an object inside it, or a list.
-	 * @return array|null The clean value, or null when a key does not match.
-	 */
-	private static function clean_node( array $value ): ?array {
-		$is_list = array_keys( $value ) === range( 0, count( $value ) - 1 );
-		$clean   = array();
-		foreach ( $value as $key => $child ) {
-			if ( ! $is_list && ( ! is_string( $key ) || 1 !== preg_match( self::KEY_PATTERN, $key ) ) ) {
-				return null;
-			}
-			if ( is_array( $child ) ) {
-				$child = self::clean_node( $child );
-				if ( null === $child ) {
-					return null;
-				}
-			} elseif ( is_string( $child ) ) {
-				$child = self::angle_free( $child );
-			}
-			$clean[ $key ] = $child;
-		}
-		return $clean;
-	}
 
-	/**
-	 * Replace '<' with '‹' (U+2039) and '>' with '›' (U+203A).
-	 *
-	 * @param string $text Text.
-	 */
-	private static function angle_free( string $text ): string {
-		return str_replace( array( '<', '>' ), array( "\u{2039}", "\u{203A}" ), $text );
-	}
 
-	/**
-	 * Tell whether a node is at most MAX_NODE_BYTES as JSON.
-	 *
-	 * @param mixed $node Node.
-	 */
-	private static function fits( $node ): bool {
-		$json = wp_json_encode( $node );
-		return is_string( $json ) && strlen( $json ) <= self::MAX_NODE_BYTES;
-	}
 
 	/**
 	 * Text for a node the plugin refuses to store.
@@ -340,7 +275,7 @@ final class JsonLdFix {
 		$target = $this->valid_target( $preview['target'] ?? null );
 		$node   = $preview['node'] ?? null;
 		$type   = $preview['type'] ?? null;
-		if ( null === $target || ! is_array( $node ) || ! is_string( $type ) || ! in_array( $type, self::node_types( $node ), true ) ) {
+		if ( null === $target || ! is_array( $node ) || ! is_string( $type ) || ! in_array( $type, SchemaGraph::node_types( $node ), true ) ) {
 			return $fail;
 		}
 		if ( false === ( $preview['changed'] ?? true ) ) {
@@ -358,7 +293,7 @@ final class JsonLdFix {
 			if ( null === $existing ) {
 				return array( 'error' => __( 'GenReady needs a newer server answer to check this page for existing markup. Try again later.', 'genready' ) );
 			}
-			if ( self::types_match( self::node_types( $node ), $existing, true ) ) {
+			if ( SchemaGraph::types_match( SchemaGraph::node_types( $node ), $existing, true ) ) {
 				return array(
 					'error' => sprintf(
 						/* translators: %s: schema.org type, for example Article. */
@@ -422,23 +357,6 @@ final class JsonLdFix {
 		return null === $target ? null : $this->stored( $target );
 	}
 
-	/**
-	 * Add a node to a schema graph without a duplicate.
-	 *
-	 * A node of the same type (see types_match()) gets only the properties it
-	 * does not have, or has empty (null, a blank string, an empty list); no
-	 * real value is ever replaced. An exact type match wins over a
-	 * group match. With no match the node is added. '@context' is never added
-	 * to a graph node. Entries that are not arrays with a '@type' are skipped.
-	 * Keys are kept, so the same code merges a list or keyed entities.
-	 *
-	 * @param array $graph Graph nodes (a list, or entities keyed by name).
-	 * @param array $node  The node to add.
-	 * @return array The new graph.
-	 */
-	public static function merge_into_graph( array $graph, array $node ): array {
-		return self::merge_entities( $graph, $node, null );
-	}
 
 	/**
 	 * The wp_head action, at priority 20, when no SEO plugin is active. It
@@ -451,7 +369,7 @@ final class JsonLdFix {
 				return;
 			}
 			$record = $this->current_record();
-			if ( null === $record || self::types_match( self::node_types( $record['node'] ), $record['existing_types'], true ) ) {
+			if ( null === $record || SchemaGraph::types_match( SchemaGraph::node_types( $record['node'] ), $record['existing_types'], true ) ) {
 				return;
 			}
 			$json = wp_json_encode( $record['node'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES );
@@ -513,128 +431,21 @@ final class JsonLdFix {
 			if ( null === $record ) {
 				return $graph;
 			}
-			$types = self::node_types( $record['node'] );
-			if ( null === self::find_match( $graph, $types ) && self::types_match( $types, $record['existing_types'], true ) ) {
+			$types = SchemaGraph::node_types( $record['node'] );
+			if ( null === SchemaGraph::find_match( $graph, $types ) && SchemaGraph::types_match( $types, $record['existing_types'], true ) ) {
 				return $graph;
 			}
-			return self::merge_entities( $graph, $record['node'], $new_key );
+			return SchemaGraph::merge( $graph, $record['node'], $new_key );
 		} catch ( \Throwable $e ) {
 			return $graph;
 		}
 	}
 
-	/**
-	 * Merge a node into graph entities, keeping their keys.
-	 *
-	 * @param array       $graph   Graph entities.
-	 * @param array       $node    Node to add.
-	 * @param string|null $new_key Key for a new node, or null to append it.
-	 * @return array
-	 */
-	private static function merge_entities( array $graph, array $node, ?string $new_key ): array {
-		unset( $node['@context'] );
-		$key = self::find_match( $graph, self::node_types( $node ) );
-		if ( null === $key ) {
-			if ( null === $new_key ) {
-				$graph[] = $node;
-			} else {
-				$graph[ $new_key ] = $node;
-			}
-			return $graph;
-		}
-		foreach ( $node as $prop => $value ) {
-			if ( ! array_key_exists( $prop, $graph[ $key ] ) || self::is_empty_value( $graph[ $key ][ $prop ] ) ) {
-				$graph[ $key ][ $prop ] = $value;
-			}
-		}
-		return $graph;
-	}
 
-	/**
-	 * Tell whether a graph value holds nothing: null, a blank string or an
-	 * empty list. All in One SEO sets such values and removes them only after
-	 * its schema filter runs, so they count as missing. 0 and false are values.
-	 *
-	 * @param mixed $value Graph value.
-	 */
-	private static function is_empty_value( $value ): bool {
-		return null === $value || array() === $value || ( is_string( $value ) && '' === trim( $value ) );
-	}
 
-	/**
-	 * The key of the graph node that has the same type: an exact match first,
-	 * then a match in the same type group.
-	 *
-	 * @param array    $graph Graph entities.
-	 * @param string[] $types Types of the node.
-	 * @return int|string|null
-	 */
-	private static function find_match( array $graph, array $types ) {
-		if ( array() === $types ) {
-			return null;
-		}
-		foreach ( array( false, true ) as $grouped ) {
-			foreach ( $graph as $key => $entity ) {
-				if ( is_array( $entity ) && isset( $entity['@type'] ) && self::types_match( $types, self::node_types( $entity ), $grouped ) ) {
-					return $key;
-				}
-			}
-		}
-		return null;
-	}
 
-	/**
-	 * Tell whether two type lists share a type, or, when grouped, a type group.
-	 *
-	 * @param string[] $a       Types.
-	 * @param string[] $b       Types.
-	 * @param bool     $grouped Count types in one group as the same.
-	 */
-	private static function types_match( array $a, array $b, bool $grouped ): bool {
-		if ( $grouped ) {
-			$a = self::with_groups( $a );
-			$b = self::with_groups( $b );
-		}
-		return array() !== array_intersect( $a, $b );
-	}
 
-	/**
-	 * Add every type of a group that one of the types belongs to.
-	 *
-	 * @param string[] $types Types.
-	 * @return string[]
-	 */
-	private static function with_groups( array $types ): array {
-		foreach ( self::TYPE_GROUPS as $group ) {
-			if ( array() !== array_intersect( $types, $group ) ) {
-				$types = array_merge( $types, $group );
-			}
-		}
-		return array_values( array_unique( $types ) );
-	}
 
-	/**
-	 * The types of a node: a string or a list of strings. Anything else gives
-	 * an empty list.
-	 *
-	 * @param array $node Node.
-	 * @return string[]
-	 */
-	private static function node_types( array $node ): array {
-		$type = $node['@type'] ?? null;
-		if ( is_string( $type ) && '' !== $type ) {
-			return array( $type );
-		}
-		if ( ! is_array( $type ) || array() === $type ) {
-			return array();
-		}
-		foreach ( $type as $one ) {
-			if ( ! is_string( $one ) || '' === $one ) {
-				return array();
-			}
-		}
-		return array_values( $type );
-	}
 
 	/**
 	 * The stored record of the page being viewed: the singular post's meta, or
@@ -680,7 +491,7 @@ final class JsonLdFix {
 		if ( ! is_array( $raw ) || ! is_array( $raw['node'] ?? null ) ) {
 			return null;
 		}
-		$types = self::node_types( $raw['node'] );
+		$types = SchemaGraph::node_types( $raw['node'] );
 		if ( array() === $types ) {
 			return null;
 		}
@@ -793,7 +604,7 @@ final class JsonLdFix {
 	private function incomplete( array $node, $blocked ): ?string {
 		$todo = array();
 		foreach ( $node as $prop => $value ) {
-			if ( $this->has_todo( $value ) ) {
+			if ( SchemaNode::has_todo( $value ) ) {
 				$todo[] = (string) $prop;
 			}
 		}
@@ -816,87 +627,10 @@ final class JsonLdFix {
 		return null;
 	}
 
-	/**
-	 * Tell whether a value is, or holds at any depth, a TODO string.
-	 *
-	 * @param mixed $value Value.
-	 */
-	private function has_todo( $value ): bool {
-		if ( is_array( $value ) ) {
-			foreach ( $value as $child ) {
-				if ( $this->has_todo( $child ) ) {
-					return true;
-				}
-			}
-			return false;
-		}
-		return $this->is_todo( $value );
-	}
 
-	/**
-	 * Tell whether a value is a TODO string.
-	 *
-	 * @param mixed $value Value.
-	 */
-	private function is_todo( $value ): bool {
-		return is_string( $value ) && 0 === strpos( $value, self::TODO );
-	}
 
-	/**
-	 * Clean one form value.
-	 *
-	 * @param string $rule  'text', 'textarea', 'date' or 'url'.
-	 * @param string $value Raw value.
-	 * @return string|null The clean value ('' when empty), or null when it is not valid.
-	 */
-	private function form_value( string $rule, string $value ): ?string {
-		if ( 'textarea' === $rule ) {
-			return Text::cap( sanitize_textarea_field( $value ), self::MAX_DESCRIPTION );
-		}
-		if ( 'text' === $rule ) {
-			return Text::cap( sanitize_text_field( $value ), self::MAX_TEXT );
-		}
-		$value = trim( $value );
-		if ( '' === $value ) {
-			return '';
-		}
-		if ( 'date' === $rule ) {
-			return $this->valid_date( $value ) ? $value : null;
-		}
-		$url = esc_url_raw( $value, array( 'http', 'https' ) );
-		return '' !== $url && 1 === preg_match( '#^https?://#i', $url ) && false !== wp_http_validate_url( $url ) ? $url : null;
-	}
 
-	/**
-	 * The error text for a value that is not valid.
-	 *
-	 * @param string $rule 'date' or 'url'.
-	 * @param string $prop Property name.
-	 */
-	private function bad_value( string $rule, string $prop ): string {
-		if ( 'date' === $rule ) {
-			return sprintf(
-				/* translators: %s: schema.org property, for example datePublished. */
-				__( 'Enter %s as a date and time with a time zone, like 2026-10-01T10:00:00+00:00.', 'genready' ),
-				$prop
-			);
-		}
-		return __( 'Enter the logo as a full web address that starts with https:// or http://.', 'genready' );
-	}
 
-	/**
-	 * Tell whether a date is ISO 8601 with an offset, in the exact form the
-	 * server accepts (for example 2026-10-01T10:00:00+00:00).
-	 *
-	 * @param string $value Date.
-	 */
-	private function valid_date( string $value ): bool {
-		if ( 1 !== preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/', $value ) ) {
-			return false;
-		}
-		$date = \DateTime::createFromFormat( DATE_ATOM, $value );
-		return false !== $date && $date->format( DATE_ATOM ) === $value;
-	}
 
 	/**
 	 * The facts WordPress knows about the target, cleaned to the server's limits.
@@ -906,7 +640,7 @@ final class JsonLdFix {
 	 */
 	private function wp_facts( array $target ): ?array {
 		if ( isset( $target['home'] ) ) {
-			$title = $this->clean( (string) get_bloginfo( 'name' ), self::MAX_TEXT );
+			$title = $this->clean( (string) get_bloginfo( 'name' ), SchemaNode::MAX_TEXT );
 			return '' === $title ? array() : array( 'title' => $title );
 		}
 		$post = get_post( $target['post_id'] );
@@ -914,13 +648,13 @@ final class JsonLdFix {
 			return null;
 		}
 		$facts = array(
-			'title'         => $this->clean( (string) get_the_title( $post ), self::MAX_TEXT ),
-			'author'        => $this->clean( (string) get_the_author_meta( 'display_name', (int) ( $post->post_author ?? 0 ) ), self::MAX_TEXT ),
+			'title'         => $this->clean( (string) get_the_title( $post ), SchemaNode::MAX_TEXT ),
+			'author'        => $this->clean( (string) get_the_author_meta( 'display_name', (int) ( $post->post_author ?? 0 ) ), SchemaNode::MAX_TEXT ),
 			'datePublished' => get_post_time( 'c', true, $post ),
 			'dateModified'  => get_post_modified_time( 'c', true, $post ),
 		);
 		foreach ( $facts as $key => $value ) {
-			$keep = is_string( $value ) && '' !== $value && ( 0 !== strpos( $key, 'date' ) || $this->valid_date( $value ) );
+			$keep = is_string( $value ) && '' !== $value && ( 0 !== strpos( $key, 'date' ) || SchemaNode::valid_date( $value ) );
 			if ( ! $keep ) {
 				unset( $facts[ $key ] );
 			}
