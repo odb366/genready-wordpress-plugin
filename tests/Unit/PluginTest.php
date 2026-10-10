@@ -44,6 +44,15 @@ class PluginTest extends TestCase {
 		$this->assertInstanceOf( \GenReady\Fixes\RobotsFix::class, $plugin->robots() );
 	}
 
+	public function test_boot_hooks_llms_serving_first_without_loading_the_connection(): void {
+		Monkey\Functions\expect( 'get_option' )->never();
+		Monkey\Functions\when( 'add_filter' )->justReturn( true );
+		Monkey\Actions\expectAdded( 'parse_request' )->once()->with( \Mockery::type( 'array' ), 0 );
+		$plugin = \GenReady\Plugin::instance();
+		$plugin->boot();
+		$this->assertInstanceOf( \GenReady\Fixes\LlmsTxtFix::class, $plugin->llms() );
+	}
+
 	public function test_callback_stores_the_notice_and_redirects(): void {
 		Monkey\Functions\when( 'add_action' )->justReturn( true );
 		Monkey\Functions\when( 'sanitize_text_field' )->returnArg( 1 );

@@ -10,11 +10,13 @@ namespace GenReady;
 use GenReady\Api\Client;
 use GenReady\Connection\ApiKey;
 use GenReady\Compat\Caches;
+use GenReady\Compat\SeoPlugins;
 use GenReady\Connection\OAuth;
 use GenReady\Connection\SiteSetup;
 use GenReady\Connection\TokenStore;
 use GenReady\Fixes\FileWriter;
 use GenReady\Fixes\FixStore;
+use GenReady\Fixes\LlmsTxtFix;
 use GenReady\Fixes\RobotsFix;
 use GenReady\Verification\MetaTag;
 
@@ -90,6 +92,12 @@ final class Plugin {
 	 * @var RobotsFix|null
 	 */
 	private $robots = null;
+	/**
+	 * The llms.txt fix.
+	 *
+	 * @var LlmsTxtFix|null
+	 */
+	private $llms = null;
 
 	/**
 	 * Return the single instance.
@@ -123,19 +131,16 @@ final class Plugin {
 
 		$this->fixes = new FixStore();
 		$this->files = new FileWriter();
-		// The domain ID is read only when a preview runs, so serving robots.txt never decrypts the connection.
-		$this->robots = new RobotsFix(
-			$this->fixes,
-			$this->files,
-			$this->client,
-			$this->caches,
-			function (): string {
-				$connection = $this->store->load();
-				$domain_id  = is_array( $connection ) ? ( $connection['domain_id'] ?? '' ) : '';
-				return is_string( $domain_id ) ? $domain_id : '';
-			}
-		);
+		// The domain ID is read only when a preview runs, so serving robots.txt or llms.txt never decrypts the connection.
+		$domain_id    = function (): string {
+			$connection = $this->store->load();
+			$domain_id  = is_array( $connection ) ? ( $connection['domain_id'] ?? '' ) : '';
+			return is_string( $domain_id ) ? $domain_id : '';
+		};
+		$this->robots = new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, $domain_id );
+		$this->llms   = new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, new SeoPlugins(), $domain_id );
 		add_filter( 'robots_txt', array( $this->robots, 'filter' ), PHP_INT_MAX, 2 );
+		add_action( 'parse_request', array( $this->llms, 'serve' ), 0 );
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_init', array( $this, 'maybe_handle_oauth_callback' ) );
@@ -209,6 +214,13 @@ final class Plugin {
 	 */
 	public function robots(): RobotsFix {
 		return $this->robots;
+	}
+
+	/**
+	 * The llms.txt fix.
+	 */
+	public function llms(): LlmsTxtFix {
+		return $this->llms;
 	}
 
 	/**
