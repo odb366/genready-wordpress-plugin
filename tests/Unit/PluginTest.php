@@ -53,6 +53,20 @@ class PluginTest extends TestCase {
 		$this->assertInstanceOf( \GenReady\Fixes\LlmsTxtFix::class, $plugin->llms() );
 	}
 
+	public function test_boot_hooks_the_jsonld_output_without_loading_the_connection(): void {
+		Monkey\Functions\expect( 'get_option' )->never();
+		Monkey\Functions\expect( 'wp_remote_request' )->never();
+		Monkey\Actions\expectAdded( 'wp_head' )->once()->with( \Mockery::type( 'array' ), 1 );
+		Monkey\Actions\expectAdded( 'wp_head' )->once()->with( \Mockery::type( 'array' ), 20 );
+		Monkey\Actions\expectAdded( 'init' )->once()->with( \Mockery::type( 'array' ) );
+		Monkey\Filters\expectAdded( 'wpseo_schema_graph' )->once()->with( \Mockery::type( 'array' ), 99 );
+		Monkey\Filters\expectAdded( 'rank_math/json_ld' )->once()->with( \Mockery::type( 'array' ), 99 );
+		Monkey\Filters\expectAdded( 'aioseo_schema_output' )->once()->with( \Mockery::type( 'array' ), 99 );
+		$plugin = \GenReady\Plugin::instance();
+		$plugin->boot();
+		$this->assertInstanceOf( \GenReady\Fixes\JsonLdFix::class, $plugin->jsonld() );
+	}
+
 	public function test_callback_stores_the_notice_and_redirects(): void {
 		Monkey\Functions\when( 'add_action' )->justReturn( true );
 		Monkey\Functions\when( 'sanitize_text_field' )->returnArg( 1 );

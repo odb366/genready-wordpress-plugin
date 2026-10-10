@@ -23,6 +23,22 @@ defined( 'ABSPATH' ) || exit;
  */
 class SeoPlugins {
 	/**
+	 * The schema filter of each plugin, checked against its source on 2026-10-10:
+	 * - Yoast SEO: 'wpseo_schema_graph' passes the list of graph pieces
+	 *   (src/generators/schema-generator.php; Yoast adds '@context' and '@graph' after it).
+	 * - Rank Math: 'rank_math/json_ld' passes entities keyed by name, such as 'publisher',
+	 *   'WebSite', 'WebPage' and 'richSnippet' (includes/modules/schema/class-jsonld.php;
+	 *   Rank Math adds its own entities at priority 10 and outputs array_values() as '@graph').
+	 * - All in One SEO: 'aioseo_schema_output' passes the '@graph' list only
+	 *   (app/Common/Schema/Helpers.php, getOutput()).
+	 */
+	const SCHEMA_FILTERS = array(
+		'yoast'    => 'wpseo_schema_graph',
+		'rankmath' => 'rank_math/json_ld',
+		'aioseo'   => 'aioseo_schema_output',
+	);
+
+	/**
 	 * Files in the site root.
 	 *
 	 * @var FileWriter

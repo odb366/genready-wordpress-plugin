@@ -16,6 +16,7 @@ use GenReady\Connection\SiteSetup;
 use GenReady\Connection\TokenStore;
 use GenReady\Fixes\FileWriter;
 use GenReady\Fixes\FixStore;
+use GenReady\Fixes\JsonLdFix;
 use GenReady\Fixes\LlmsTxtFix;
 use GenReady\Fixes\RobotsFix;
 use GenReady\Verification\MetaTag;
@@ -98,6 +99,12 @@ final class Plugin {
 	 * @var LlmsTxtFix|null
 	 */
 	private $llms = null;
+	/**
+	 * The JSON-LD fix.
+	 *
+	 * @var JsonLdFix|null
+	 */
+	private $jsonld = null;
 
 	/**
 	 * Return the single instance.
@@ -137,10 +144,18 @@ final class Plugin {
 			$domain_id  = is_array( $connection ) ? ( $connection['domain_id'] ?? '' ) : '';
 			return is_string( $domain_id ) ? $domain_id : '';
 		};
+		$seo          = new SeoPlugins( $this->files );
 		$this->robots = new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, $domain_id );
-		$this->llms   = new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, new SeoPlugins( $this->files ), $domain_id );
+		$this->llms   = new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, $seo, $domain_id );
+		$this->jsonld = new JsonLdFix( $this->fixes, $this->client, $this->caches, $seo, $domain_id );
 		add_filter( 'robots_txt', array( $this->robots, 'filter' ), PHP_INT_MAX, 2 );
 		add_action( 'parse_request', array( $this->llms, 'serve' ), 0 );
+		add_action( 'init', array( $this->jsonld, 'register_meta' ) );
+		add_action( 'wp_head', array( $this->jsonld, 'print_script' ), 20 );
+		// Late, so the node meets every node the SEO plugin and other plugins added.
+		add_filter( SeoPlugins::SCHEMA_FILTERS['yoast'], array( $this->jsonld, 'yoast' ), 99 );
+		add_filter( SeoPlugins::SCHEMA_FILTERS['rankmath'], array( $this->jsonld, 'rankmath' ), 99 );
+		add_filter( SeoPlugins::SCHEMA_FILTERS['aioseo'], array( $this->jsonld, 'aioseo' ), 99 );
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_init', array( $this, 'maybe_handle_oauth_callback' ) );
@@ -221,6 +236,13 @@ final class Plugin {
 	 */
 	public function llms(): LlmsTxtFix {
 		return $this->llms;
+	}
+
+	/**
+	 * The JSON-LD fix.
+	 */
+	public function jsonld(): JsonLdFix {
+		return $this->jsonld;
 	}
 
 	/**
