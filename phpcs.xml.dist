@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<ruleset name="GenReady">
+	<description>GenReady plugin coding standard.</description>
+	<file>genready.php</file>
+	<file>src</file>
+	<arg name="extensions" value="php"/>
+	<arg value="ps"/>
+	<config name="testVersion" value="7.4-"/>
+	<config name="minimum_wp_version" value="6.5"/>
+	<rule ref="WordPress">
+		<!-- PSR-4 style autoloader: GenReady\X\Y maps to src/X/Y.php. -->
+		<exclude name="WordPress.Files.FileName"/>
+	</rule>
+	<rule ref="PHPCompatibilityWP"/>
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array"><element value="genready"/></property>
+		</properties>
+	</rule>
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="genready"/>
+				<element value="GenReady"/>
+			</property>
+		</properties>
+	</rule>
+</ruleset>

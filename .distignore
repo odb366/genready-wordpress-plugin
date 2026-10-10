@@ -1,0 +1,11 @@
+tests
+vendor
+composer.json
+composer.lock
+phpunit.xml.dist
+phpcs.xml.dist
+e2e
+node_modules
+.git
+.gitignore
+.distignore
