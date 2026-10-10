@@ -2,6 +2,7 @@
 <ruleset name="GenReady">
 	<description>GenReady plugin coding standard.</description>
 	<file>genready.php</file>
+	<file>uninstall.php</file>
 	<file>src</file>
 	<arg name="extensions" value="php"/>
 	<arg value="ps"/>

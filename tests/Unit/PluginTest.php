@@ -117,4 +117,24 @@ class PluginTest extends TestCase {
 		$plugin->maybe_handle_oauth_callback();
 		$this->assertTrue( true );
 	}
+
+	public function test_privacy_text_is_registered(): void {
+		Monkey\Functions\when( '__' )->returnArg( 1 );
+		Monkey\Functions\when( 'wpautop' )->alias( function ( $t ) { return '<p>' . $t . '</p>'; } );
+		Monkey\Functions\when( 'wp_kses_post' )->returnArg( 1 );
+		$given = null;
+		Monkey\Functions\when( 'wp_add_privacy_policy_content' )->alias( function ( $name, $text ) use ( &$given ) { $given = array( $name, $text ); } );
+		\GenReady\Plugin::instance()->register_privacy_text();
+		$this->assertSame( 'GenReady', $given[0] );
+		$this->assertStringContainsString( 'genready.ai', $given[1] );
+		$this->assertStringContainsString( 'no cookies', $given[1] );
+	}
+
+	public function test_boot_registers_the_privacy_text_on_admin_init(): void {
+		Monkey\Functions\when( 'add_filter' )->justReturn( true );
+		// The OAuth callback handler and the privacy text both use admin_init.
+		Monkey\Actions\expectAdded( 'admin_init' )->twice();
+		\GenReady\Plugin::instance()->boot();
+		$this->assertTrue( true );
+	}
 }

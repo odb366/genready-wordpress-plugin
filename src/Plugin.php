@@ -163,6 +163,7 @@ final class Plugin {
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_init', array( $this, 'maybe_handle_oauth_callback' ) );
+		add_action( 'admin_init', array( $this, 'register_privacy_text' ) );
 
 		// The admin page and its REST routes. Building them makes no call and reads no option.
 		$reports = new Reports( $this->store, $this->client );
@@ -277,6 +278,19 @@ final class Plugin {
 	 */
 	public function serve_client_document(): \WP_REST_Response {
 		return new \WP_REST_Response( $this->oauth->client_document(), 200, array( 'Cache-Control' => 'public, max-age=300' ) );
+	}
+
+	/**
+	 * Add the plugin's text to the suggested privacy policy (Settings, Privacy).
+	 */
+	public function register_privacy_text(): void {
+		if ( ! function_exists( 'wp_add_privacy_policy_content' ) ) {
+			return;
+		}
+		wp_add_privacy_policy_content(
+			'GenReady',
+			wp_kses_post( wpautop( __( 'The GenReady plugin does not collect data about visitors to this site and sets no cookies. Site administrators who connect the plugin send site data to genready.ai, as the plugin readme describes.', 'genready' ) ) )
+		);
 	}
 
 	/**

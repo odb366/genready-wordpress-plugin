@@ -3,7 +3,8 @@ namespace GenReady\Tests\Fixtures;
 
 /**
  * In-memory stand-in for $wpdb. It understands only the statements the
- * TokenStore lock issues: INSERT IGNORE and the conditional DELETE.
+ * TokenStore lock issues (INSERT IGNORE and the conditional DELETE) and the
+ * uninstaller's prefix DELETE with two LIKE patterns.
  */
 class FakeWpdb {
 	/** @var string */
@@ -46,7 +47,43 @@ class FakeWpdb {
 			}
 			return 0;
 		}
+		if ( preg_match( "/^DELETE FROM {$this->options} WHERE option_name LIKE $str OR option_name LIKE $str$/", $sql, $m ) ) {
+			$deleted = 0;
+			foreach ( array( stripslashes( $m[1] ), stripslashes( $m[2] ) ) as $pattern ) {
+				$regex = $this->like_to_regex( $pattern );
+				foreach ( array_keys( $this->rows ) as $name ) {
+					if ( preg_match( $regex, (string) $name ) ) {
+						unset( $this->rows[ $name ] );
+						++$deleted;
+					}
+				}
+			}
+			return $deleted;
+		}
 		throw new \RuntimeException( 'FakeWpdb does not understand: ' . $sql );
+	}
+
+	public function esc_like( $text ) {
+		return addcslashes( (string) $text, '_%\\' );
+	}
+
+	/** Turn a LIKE pattern (backslash escapes, % wildcard, _ single char) into a regex. */
+	private function like_to_regex( string $pattern ): string {
+		$regex = '';
+		$len   = strlen( $pattern );
+		for ( $i = 0; $i < $len; $i++ ) {
+			$char = $pattern[ $i ];
+			if ( '\\' === $char && $i + 1 < $len ) {
+				$regex .= preg_quote( $pattern[ ++$i ], '/' );
+			} elseif ( '%' === $char ) {
+				$regex .= '.*';
+			} elseif ( '_' === $char ) {
+				$regex .= '.';
+			} else {
+				$regex .= preg_quote( $char, '/' );
+			}
+		}
+		return '/^' . $regex . '$/s';
 	}
 
 	public function get_var( $sql ) {

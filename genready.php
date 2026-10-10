@@ -37,6 +37,6 @@ spl_autoload_register(
 	}
 );
 
-if ( ! defined( 'GENREADY_TESTING' ) ) {
+if ( ! defined( 'GENREADY_TESTING' ) && ! defined( 'GENREADY_UNINSTALLING' ) ) {
 	add_action( 'plugins_loaded', array( \GenReady\Plugin::instance(), 'boot' ) );
 }
