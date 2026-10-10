@@ -1,0 +1,296 @@
+<?php
+/**
+ * The GenReady admin page under Settings.
+ *
+ * @package GenReady
+ */
+
+namespace GenReady\Admin;
+
+use GenReady\Api\ApiError;
+use GenReady\Connection\TokenStore;
+use GenReady\Verification\MetaTag;
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Registers Settings → GenReady with the Overview, Fixes and Connection tabs,
+ * loads the script and style on that page only, and shows the one notice on
+ * the Plugins screen.
+ */
+final class Page {
+	/** Menu slug. */
+	const SLUG = 'genready';
+	/** Hook suffix of the page. */
+	const HOOK = 'settings_page_genready';
+	/** The tabs, in order. */
+	const TABS = array( 'overview', 'fixes', 'connection' );
+	/** Views that view() may render. */
+	const VIEWS = array( 'overview', 'fixes', 'connection' );
+
+	/**
+	 * Token storage.
+	 *
+	 * @var TokenStore
+	 */
+	private $store;
+	/**
+	 * Report and account data.
+	 *
+	 * @var Reports
+	 */
+	private $reports;
+	/**
+	 * Fix cards.
+	 *
+	 * @var FixCards
+	 */
+	private $cards;
+	/**
+	 * The callback notice, read once per request. False until read.
+	 *
+	 * @var array|null|false
+	 */
+	private $notice = false;
+	/**
+	 * The report state, loaded once per request. Null until loaded.
+	 *
+	 * @var array|null
+	 */
+	private $state = null;
+
+	/**
+	 * Build the page.
+	 *
+	 * @param TokenStore $store   Token storage.
+	 * @param Reports    $reports Report and account data.
+	 * @param FixCards   $cards   Fix cards.
+	 */
+	public function __construct( TokenStore $store, Reports $reports, FixCards $cards ) {
+		$this->store   = $store;
+		$this->reports = $reports;
+		$this->cards   = $cards;
+	}
+
+	/**
+	 * Hook the page into wp-admin.
+	 */
+	public function register(): void {
+		add_action( 'admin_menu', array( $this, 'add_menu' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue' ) );
+		add_action( 'admin_notices', array( $this, 'plugins_notice' ) );
+	}
+
+	/**
+	 * Add Settings → GenReady.
+	 */
+	public function add_menu(): void {
+		add_options_page( 'GenReady', 'GenReady', 'manage_options', self::SLUG, array( $this, 'render' ) );
+	}
+
+	/**
+	 * Load the script and style on the GenReady page, and the dismiss script on
+	 * the Plugins screen while its notice shows.
+	 *
+	 * @param string $hook Hook suffix of the current admin page.
+	 */
+	public function enqueue( $hook ): void {
+		if ( 'plugins.php' === $hook && $this->notice_due() ) {
+			wp_enqueue_script( 'wp-api-fetch' );
+			wp_add_inline_script(
+				'wp-api-fetch',
+				"document.addEventListener('click',function(e){var t=e.target;if(t&&t.closest&&t.closest('.genready-notice .notice-dismiss')){window.wp.apiFetch({path:'/genready/v1/notice/dismiss',method:'POST'}).catch(function(){});}});"
+			);
+			return;
+		}
+		if ( self::HOOK !== $hook ) {
+			return;
+		}
+		wp_enqueue_style( 'genready-admin', plugins_url( 'assets/admin.css', GENREADY_FILE ), array(), GENREADY_VERSION );
+		wp_enqueue_script( 'genready-admin', plugins_url( 'assets/admin.js', GENREADY_FILE ), array( 'wp-api-fetch', 'wp-i18n' ), GENREADY_VERSION, true );
+		wp_set_script_translations( 'genready-admin', 'genready' );
+		$notice    = $this->notice();
+		$connected = null !== $this->store->load();
+		$state     = $connected && 'overview' === $this->tab() ? $this->state() : array();
+		$data      = array(
+			'ns'            => Rest::NS,
+			'connected'     => $connected,
+			'justConnected' => $connected && is_array( $notice ) && ! empty( $notice['ok'] ),
+			'reportState'   => (string) ( $state['state'] ?? '' ),
+			'overviewUrl'   => admin_url( 'options-general.php?page=' . self::SLUG ),
+		);
+		wp_add_inline_script( 'genready-admin', 'window.genreadyAdmin = ' . wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP ) . ';', 'before' );
+	}
+
+	/**
+	 * The one notice on the Plugins screen, until the site is connected or the
+	 * admin dismisses it.
+	 */
+	public function plugins_notice(): void {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || 'plugins' !== $screen->id || ! $this->notice_due() ) {
+			return;
+		}
+		printf(
+			'<div class="notice notice-info is-dismissible genready-notice"><p>%1$s <a href="%2$s">%3$s</a></p></div>',
+			esc_html__( 'Connect GenReady to see your AI readiness score.', 'genready' ),
+			esc_url( admin_url( 'options-general.php?page=' . self::SLUG ) ),
+			esc_html__( 'Open GenReady', 'genready' )
+		);
+	}
+
+	/**
+	 * Print the page.
+	 */
+	public function render(): void {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		$tab       = $this->tab();
+		$connected = null !== $this->store->load();
+		echo '<div class="wrap genready-admin">';
+		echo '<h1>' . esc_html__( 'GenReady', 'genready' ) . '</h1>';
+		$this->print_notice();
+		echo '<nav class="nav-tab-wrapper" aria-label="' . esc_attr__( 'GenReady sections', 'genready' ) . '">';
+		$labels = array(
+			'overview'   => __( 'Overview', 'genready' ),
+			'fixes'      => __( 'Fixes', 'genready' ),
+			'connection' => __( 'Connection', 'genready' ),
+		);
+		foreach ( self::TABS as $name ) {
+			printf(
+				'<a href="%1$s" class="nav-tab%2$s"%3$s>%4$s</a>',
+				esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=' . $name ) ),
+				$tab === $name ? ' nav-tab-active' : '',
+				$tab === $name ? ' aria-current="page"' : '',
+				esc_html( $labels[ $name ] )
+			);
+		}
+		echo '</nav>';
+		echo '<div id="genready-setup" class="genready-setup" role="status" aria-live="polite" tabindex="-1" hidden></div>';
+		echo self::view( $this->view_name( $tab, $connected ), $this->view_data( $tab, $connected ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the views escape every value.
+		echo '</div>';
+	}
+
+	/**
+	 * Render a view to a string. The view reads its data from $view.
+	 *
+	 * @param string $name One of VIEWS.
+	 * @param array  $view Data for the view.
+	 */
+	public static function view( string $name, array $view ): string { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- the included view reads $view.
+		if ( ! in_array( $name, self::VIEWS, true ) ) {
+			return '';
+		}
+		ob_start();
+		include __DIR__ . '/views/' . $name . '.php';
+		return (string) ob_get_clean();
+	}
+
+	/**
+	 * The current tab.
+	 */
+	private function tab(): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only tab switch.
+		$tab = isset( $_GET['tab'] ) && is_string( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'overview';
+		return in_array( $tab, self::TABS, true ) ? $tab : 'overview';
+	}
+
+	/**
+	 * The view for a tab. Overview without a connection shows the connect form.
+	 *
+	 * @param string $tab       Current tab.
+	 * @param bool   $connected Whether the site is connected.
+	 */
+	private function view_name( string $tab, bool $connected ): string {
+		return 'overview' === $tab && ! $connected ? 'connection' : $tab;
+	}
+
+	/**
+	 * The data of a tab's view.
+	 *
+	 * @param string $tab       Current tab.
+	 * @param bool   $connected Whether the site is connected.
+	 */
+	private function view_data( string $tab, bool $connected ): array {
+		if ( 'overview' === $tab && $connected ) {
+			return array(
+				'connected' => true,
+				'state'     => $this->state(),
+			);
+		}
+		if ( 'fixes' === $tab ) {
+			return array(
+				'connected' => $connected,
+				'cards'     => $this->cards->all( $this->cards->jsonld_target( $this->reports->cached_url() ) ),
+			);
+		}
+		return array(
+			'connected' => $connected,
+			'account'   => $connected ? $this->reports->account() : null,
+			'tag_on'    => MetaTag::is_valid( get_option( MetaTag::OPTION ) ),
+		);
+	}
+
+	/**
+	 * The report state for the Overview tab, loaded once.
+	 */
+	private function state(): array {
+		if ( null === $this->state ) {
+			$state       = $this->reports->state();
+			$this->state = $state instanceof ApiError
+				? array(
+					'state'   => 'error',
+					'message' => $state->user_message(),
+				)
+				: $state;
+		}
+		return $this->state;
+	}
+
+	/**
+	 * The notice the OAuth callback left for this user. It is read once, then deleted.
+	 *
+	 * @return array|null array( 'ok' => true, 'notice'? => string ) or array( 'error' => string ), or null.
+	 */
+	private function notice(): ?array {
+		if ( false === $this->notice ) {
+			$key          = 'genready_notice_' . get_current_user_id();
+			$notice       = get_transient( $key );
+			$this->notice = is_array( $notice ) ? $notice : null;
+			if ( null !== $this->notice ) {
+				delete_transient( $key );
+			}
+		}
+		return $this->notice;
+	}
+
+	/**
+	 * Print the callback notice, if any.
+	 */
+	private function print_notice(): void {
+		$notice = $this->notice();
+		if ( null === $notice ) {
+			return;
+		}
+		if ( isset( $notice['error'] ) && is_string( $notice['error'] ) ) {
+			printf( '<div class="notice notice-error"><p>%s</p></div>', esc_html( $notice['error'] ) );
+			return;
+		}
+		if ( ! empty( $notice['ok'] ) ) {
+			printf( '<div class="notice notice-success"><p>%s</p></div>', esc_html__( 'GenReady is connected.', 'genready' ) );
+			if ( isset( $notice['notice'] ) && is_string( $notice['notice'] ) && '' !== $notice['notice'] ) {
+				printf( '<div class="notice notice-warning"><p>%s</p></div>', esc_html( $notice['notice'] ) );
+			}
+		}
+	}
+
+	/**
+	 * Whether the Plugins screen notice should show for this user.
+	 */
+	private function notice_due(): bool {
+		return current_user_can( 'manage_options' )
+			&& null === $this->store->load()
+			&& ! get_user_meta( get_current_user_id(), Rest::NOTICE_DISMISSED, true );
+	}
+}

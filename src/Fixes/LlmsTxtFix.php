@@ -493,11 +493,11 @@ class LlmsTxtFix {
 
 	/**
 	 * The text that refuses the fix now (unknown root, another plugin's file,
-	 * a failed plugin check), or null.
+	 * a failed plugin check), or null. The fix card shows it.
 	 *
 	 * @param string $mode Current mode.
 	 */
-	private function refusal( string $mode ): ?string {
+	public function refusal( string $mode ): ?string {
 		if ( 'unknown' === $mode ) {
 			return $this->root_unknown();
 		}

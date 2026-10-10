@@ -7,6 +7,10 @@
 
 namespace GenReady;
 
+use GenReady\Admin\FixCards;
+use GenReady\Admin\Page;
+use GenReady\Admin\Reports;
+use GenReady\Admin\Rest;
 use GenReady\Api\Client;
 use GenReady\Connection\ApiKey;
 use GenReady\Compat\Caches;
@@ -159,6 +163,13 @@ final class Plugin {
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
 		add_action( 'admin_init', array( $this, 'maybe_handle_oauth_callback' ) );
+
+		// The admin page and its REST routes. Building them makes no call and reads no option.
+		$reports = new Reports( $this->store, $this->client );
+		$cards   = new FixCards( $this->fixes, $this->robots, $this->llms, $this->jsonld );
+		$rest    = new Rest( $this->store, $this->client, $this->oauth, $this->api_key, $this->site_setup, $this->meta_tag, $this->caches, $reports, $cards );
+		add_action( 'rest_api_init', array( $rest, 'register' ) );
+		( new Page( $this->store, $reports, $cards ) )->register();
 	}
 
 	/**

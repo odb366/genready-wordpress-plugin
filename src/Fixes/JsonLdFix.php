@@ -338,6 +338,17 @@ final class JsonLdFix {
 	}
 
 	/**
+	 * The record stored for a target, with its versions, for the fix card.
+	 *
+	 * @param array $target array( 'post_id' => int ) or array( 'home' => true ).
+	 * @return array|null array( 'node', 'type', 'existing_types', 'versions' ), or null when nothing is stored.
+	 */
+	public function stored_for( array $target ): ?array {
+		$target = $this->valid_target( $target );
+		return null === $target ? null : $this->stored( $target );
+	}
+
+	/**
 	 * Add a node to a schema graph without a duplicate.
 	 *
 	 * A node of the same type (see types_match()) gets only the properties it

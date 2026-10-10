@@ -499,11 +499,11 @@ class RobotsFix {
 	}
 
 	/**
-	 * The text that refuses a fix for this mode, or null.
+	 * The text that refuses a fix for this mode, or null. The fix card shows it.
 	 *
 	 * @param string $mode Current mode.
 	 */
-	private function mode_refusal( string $mode ): ?string {
+	public function mode_refusal( string $mode ): ?string {
 		if ( 'hidden' === $mode ) {
 			return __( 'This site asks search engines not to index it (Settings → Reading), so GenReady does not open it to AI crawlers.', 'genready' );
 		}

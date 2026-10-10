@@ -67,6 +67,18 @@ class PluginTest extends TestCase {
 		$this->assertInstanceOf( \GenReady\Fixes\JsonLdFix::class, $plugin->jsonld() );
 	}
 
+	public function test_boot_registers_the_admin_page_and_routes_without_loading_the_connection(): void {
+		Monkey\Functions\expect( 'get_option' )->never();
+		Monkey\Functions\expect( 'wp_remote_request' )->never();
+		Monkey\Functions\when( 'add_filter' )->justReturn( true );
+		Monkey\Actions\expectAdded( 'rest_api_init' )->twice();
+		Monkey\Actions\expectAdded( 'admin_menu' )->once();
+		Monkey\Actions\expectAdded( 'admin_enqueue_scripts' )->once();
+		Monkey\Actions\expectAdded( 'admin_notices' )->once();
+		\GenReady\Plugin::instance()->boot();
+		$this->assertTrue( true );
+	}
+
 	public function test_callback_stores_the_notice_and_redirects(): void {
 		Monkey\Functions\when( 'add_action' )->justReturn( true );
 		Monkey\Functions\when( 'sanitize_text_field' )->returnArg( 1 );
