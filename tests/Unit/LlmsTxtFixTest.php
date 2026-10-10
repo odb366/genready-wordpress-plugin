@@ -423,7 +423,7 @@ class LlmsTxtFixTest extends TestCase {
 		$this->files->may = false;
 		$this->files->put( 'llms.txt', 'NETWORK FILE' );
 		$fix  = $this->fixFor( '/' );
-		$text = 'On a multisite network, only a network admin on the main site can change llms.txt in the site root.';
+		$text = 'This site is part of a multisite network. Only a network admin on the main site can change llms.txt in the root folder.';
 		$this->assertSame( 'network', $fix->mode() );
 		$this->assertSame( $text, $fix->refusal( 'network' ) );
 		$this->assertSame( array( 'error' => $text ), $fix->preview( array() ) );
@@ -439,7 +439,7 @@ class LlmsTxtFixTest extends TestCase {
 		$fix              = $this->fixFor( '/' );
 		$this->assertSame( 'virtual', $fix->mode() );
 		$r = $fix->apply( $this->preview( "# Example\n", null ), true );
-		$this->assertSame( 'On a multisite network, only a network admin on the main site can change llms.txt in the site root.', $r['error'] );
+		$this->assertSame( 'This site is part of a multisite network. Only a network admin on the main site can change llms.txt in the root folder.', $r['error'] );
 		$this->assertSame( 0, $this->files->writes );
 		$this->assertFalse( $this->files->exists( 'llms.txt' ) );
 		$this->assertSame( array(), $this->store->get( 'llms' ) );
@@ -460,7 +460,7 @@ class LlmsTxtFixTest extends TestCase {
 		$this->files->put( 'llms.txt', 'ORIGINAL' );
 		Monkey\Functions\when( 'update_option' )->justReturn( false );
 		$r = $this->fixFor( '/' )->apply( $this->preview( 'NEW', 'ORIGINAL', 'file' ) );
-		$this->assertSame( 'GenReady could not save its backup of llms.txt, so it did not change the file.', $r['error'] );
+		$this->assertSame( 'GenReady could not save a backup of llms.txt, so it left the file as it was. Try again.', $r['error'] );
 		$this->assertSame( 0, $this->files->writes );
 		$this->assertSame( 'ORIGINAL', $this->files->read( 'llms.txt' ) );
 	}

@@ -246,7 +246,7 @@ class ClientTest extends TestCase {
 			$this->assertInstanceOf( ApiError::class, $result );
 			$this->assertNull( $result->status );
 			$this->assertSame( 'INSECURE_BASE', $result->code );
-			$this->assertSame( "GenReady's address must use HTTPS.", $result->user_message() );
+			$this->assertSame( "The GenReady address (GENREADY_API_BASE) must start with https://.", $result->user_message() );
 		}
 		$this->assertSame( 0, $calls );
 	}

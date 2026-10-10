@@ -442,7 +442,7 @@ class RobotsFix {
 			return $this->root_unknown();
 		}
 		if ( 'network' === $mode ) {
-			return __( 'On a multisite network, only a network admin on the main site can change robots.txt in the site root.', 'genready' );
+			return __( 'This site is part of a multisite network. Only a network admin on the main site can change robots.txt in the root folder.', 'genready' );
 		}
 		return null;
 	}
@@ -481,7 +481,7 @@ class RobotsFix {
 				array(
 					'cannot_write' => __( "WordPress cannot write robots.txt on this server. Download the file and upload it to your site's root folder.", 'genready' ),
 					'unreadable'   => $this->unreadable(),
-					'backup'       => __( 'GenReady could not save its backup of robots.txt, so it did not change the file.', 'genready' ),
+					'backup'       => __( 'GenReady could not save a backup of robots.txt, so it left the file as it was. Try again.', 'genready' ),
 					'write_failed' => __( "WordPress could not write robots.txt correctly. Check the file on your server, then download the new file and upload it to your site's root folder.", 'genready' ),
 					'root_unknown' => $this->root_unknown(),
 					'edited'       => __( 'robots.txt was edited after GenReady changed it, so GenReady did not undo it. Check the file yourself.', 'genready' ),

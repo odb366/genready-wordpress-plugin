@@ -199,14 +199,14 @@ class FixCards {
 	private function llms_conflict(): ?string {
 		$check = $this->llms->seo_owner();
 		if ( $check['unknown'] ) {
-			return __( "GenReady could not check whether another plugin makes llms.txt, so WordPress does not serve GenReady's file now. Try again later.", 'genready' );
+			return __( "GenReady could not check if another plugin makes llms.txt. Until it can, WordPress does not serve GenReady's file. Try again later.", 'genready' );
 		}
 		if ( ! is_array( $check['owner'] ) ) {
 			return null;
 		}
 		return sprintf(
 			/* translators: 1: SEO plugin name, 2: where to turn its llms.txt off. */
-			__( "%1\$s makes llms.txt now, so visitors get its file, not GenReady's. To use GenReady's file, turn this off: %2\$s.", 'genready' ),
+			__( "%1\$s now makes your llms.txt. Visitors see its file, not GenReady's. To use GenReady's file, turn this off: %2\$s.", 'genready' ),
 			(string) ( $check['owner']['plugin'] ?? '' ),
 			(string) ( $check['owner']['setting'] ?? '' )
 		);

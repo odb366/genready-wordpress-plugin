@@ -593,9 +593,9 @@ class RestTest extends TestCase {
 		$llms   = $cards->card( 'llms' );
 		$this->assertSame( 'network', $robots['mode'] );
 		$this->assertTrue( $robots['blocked'] );
-		$this->assertSame( 'On a multisite network, only a network admin on the main site can change robots.txt in the site root.', $robots['message'] );
+		$this->assertSame( 'This site is part of a multisite network. Only a network admin on the main site can change robots.txt in the root folder.', $robots['message'] );
 		$this->assertTrue( $llms['blocked'] );
-		$this->assertSame( 'On a multisite network, only a network admin on the main site can change llms.txt in the site root.', $llms['message'] );
+		$this->assertSame( 'This site is part of a multisite network. Only a network admin on the main site can change llms.txt in the root folder.', $llms['message'] );
 		$this->assertFalse( $llms['as_file'] );
 		unset( $this->files->files['llms.txt'] );
 		$this->assertFalse( $cards->card( 'llms' )['as_file'], 'a sub-site never writes llms.txt as a file' );
@@ -684,11 +684,11 @@ class RestTest extends TestCase {
 		$card = $cards->card( 'llms' );
 		$this->assertSame( 'needs_review', $card['state'] );
 		$this->assertSame( 'Needs review', $card['state_text'] );
-		$this->assertSame( "Yoast SEO makes llms.txt now, so visitors get its file, not GenReady's. To use GenReady's file, turn this off: Yoast SEO → Settings → Site features → AI tools → llms.txt.", $card['message'] );
+		$this->assertSame( "Yoast SEO now makes your llms.txt. Visitors see its file, not GenReady's. To use GenReady's file, turn this off: Yoast SEO → Settings → Site features → AI tools → llms.txt.", $card['message'] );
 		$this->assertTrue( $card['applied'], 'undo stays available' );
 		$seo->throws = true;
 		$card        = $cards->card( 'llms' );
 		$this->assertSame( 'needs_review', $card['state'] );
-		$this->assertSame( "GenReady could not check whether another plugin makes llms.txt, so WordPress does not serve GenReady's file now. Try again later.", $card['message'] );
+		$this->assertSame( "GenReady could not check if another plugin makes llms.txt. Until it can, WordPress does not serve GenReady's file. Try again later.", $card['message'] );
 	}
 }

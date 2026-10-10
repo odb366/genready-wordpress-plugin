@@ -666,7 +666,7 @@ class RobotsFixTest extends TestCase {
 		$this->files->put( 'robots.txt', 'ORIGINAL' );
 		Monkey\Functions\when( 'update_option' )->justReturn( false );
 		$r = $this->fix()->apply( $this->preview( 'NEW', 'ORIGINAL' ) );
-		$this->assertSame( 'GenReady could not save its backup of robots.txt, so it did not change the file.', $r['error'] );
+		$this->assertSame( 'GenReady could not save a backup of robots.txt, so it left the file as it was. Try again.', $r['error'] );
 		$this->assertSame( 0, $this->files->writes );
 		$this->assertSame( 'ORIGINAL', $this->files->read( 'robots.txt' ) );
 		$this->assertSame( array(), $this->caches->calls );
@@ -688,7 +688,7 @@ class RobotsFixTest extends TestCase {
 		$this->files->put( 'robots.txt', 'NETWORK FILE' );
 		$fix = $this->fix();
 		$this->assertSame( 'network', $fix->mode() );
-		$text = 'On a multisite network, only a network admin on the main site can change robots.txt in the site root.';
+		$text = 'This site is part of a multisite network. Only a network admin on the main site can change robots.txt in the root folder.';
 		$this->assertSame( $text, $fix->mode_refusal( 'network' ) );
 		$this->assertSame( array( 'error' => $text ), $fix->preview( true ) );
 		$this->assertSame( array(), $this->client->requests );

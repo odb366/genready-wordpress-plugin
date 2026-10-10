@@ -651,7 +651,7 @@ class JsonLdFixTest extends TestCase {
 
 	// Fix round A, G4: JSON-LD hardening.
 
-	const UNCHECKABLE = 'GenReady sent structured data that the plugin cannot check. Try again later.';
+	const UNCHECKABLE = "The structured data from GenReady did not pass the plugin's safety check. Try again later.";
 
 	/**
 	 * @dataProvider bad_keys

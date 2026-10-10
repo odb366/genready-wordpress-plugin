@@ -475,7 +475,7 @@ class LlmsTxtFix {
 				array(
 					'cannot_write' => __( "WordPress cannot write llms.txt on this server. Download the file and upload it to your site's root folder.", 'genready' ),
 					'unreadable'   => $this->unreadable(),
-					'backup'       => __( 'GenReady could not save its backup of llms.txt, so it did not change the file.', 'genready' ),
+					'backup'       => __( 'GenReady could not save a backup of llms.txt, so it left the file as it was. Try again.', 'genready' ),
 					'write_failed' => __( "WordPress could not write llms.txt correctly. Check the file on your server, then download the new file and upload it to your site's root folder.", 'genready' ),
 					'root_unknown' => $this->root_unknown(),
 					'edited'       => __( 'llms.txt was edited after GenReady changed it, so GenReady did not undo it. Check the file yourself.', 'genready' ),
@@ -497,7 +497,7 @@ class LlmsTxtFix {
 	 * Text for a multisite request that may not change files in the shared root folder.
 	 */
 	private function network(): string {
-		return __( 'On a multisite network, only a network admin on the main site can change llms.txt in the site root.', 'genready' );
+		return __( 'This site is part of a multisite network. Only a network admin on the main site can change llms.txt in the root folder.', 'genready' );
 	}
 
 	/**

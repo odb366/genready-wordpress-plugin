@@ -271,7 +271,7 @@ final class JsonLdFix {
 	 * Text for a node the plugin refuses to store.
 	 */
 	private function uncheckable(): string {
-		return __( 'GenReady sent structured data that the plugin cannot check. Try again later.', 'genready' );
+		return __( "The structured data from GenReady did not pass the plugin's safety check. Try again later.", 'genready' );
 	}
 
 	/**

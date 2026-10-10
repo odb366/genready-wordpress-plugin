@@ -62,7 +62,7 @@ final class ApiError {
 			return __( 'GenReady did not answer. Try again.', 'genready' );
 		}
 		if ( 'INSECURE_BASE' === $this->code ) {
-			return __( "GenReady's address must use HTTPS.", 'genready' );
+			return __( 'The GenReady address (GENREADY_API_BASE) must start with https://.', 'genready' );
 		}
 		switch ( $this->status ) {
 			case 401:
