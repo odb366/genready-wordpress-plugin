@@ -108,7 +108,7 @@ Clear the Kinsta cache in MyKinsta after you apply a fix. Kinsta has no public p
 
 = Where is the source code? =
 
-The source code link is added before release.
+The source code is on GitHub: https://github.com/odb366/genready-wordpress-plugin
 
 == Changelog ==
 
