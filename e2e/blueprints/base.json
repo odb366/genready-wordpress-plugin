@@ -1,9 +1,20 @@
 {
 	"$schema": "https://playground.wordpress.net/blueprint-schema.json",
-	"features": { "networking": true },
+	"features": {
+		"networking": true
+	},
 	"steps": [
-		{ "step": "defineWpConfigConsts", "consts": { "GENREADY_API_BASE": "http://127.0.0.1:5002" } },
-		{ "step": "activatePlugin", "pluginPath": "genready/genready.php" },
+		{
+			"step": "defineWpConfigConsts",
+			"consts": {
+				"GENREADY_API_BASE": "http://127.0.0.1:5002",
+				"WP_ENVIRONMENT_TYPE": "local"
+			}
+		},
+		{
+			"step": "activatePlugin",
+			"pluginPath": "genready/genready.php"
+		},
 		{
 			"step": "runPHP",
 			"code": "<?php require '/wordpress/wp-load.php'; update_option( 'permalink_structure', '/%postname%/' ); flush_rewrite_rules(); update_option( 'genready_settings', array( 'last_report_id' => '63720e48-6d92-4e0a-a862-a141951beb22' ) );"

@@ -4,7 +4,11 @@ import { VERIFY_SHOWN, account, helper, login, openGenReady } from '../lib/helpe
 test('connect with OAuth: sign in, approve, back on the plugin page connected', async ({ page }) => {
 	await login(page);
 	await openGenReady(page);
+	// The admin email goes to GenReady only when the admin ticks the box.
+	await expect(page.locator('#genready-send-email')).not.toBeChecked();
+	const authorize = page.waitForRequest(/^http:\/\/127\.0\.0\.1:5002\/oauth\/authorize/);
 	await page.getByRole('button', { name: 'Connect to GenReady' }).click();
+	expect(new URL((await authorize).url()).searchParams.has('login_hint')).toBe(false);
 
 	// Sign in on the local GenReady server.
 	await page.waitForURL(/^http:\/\/127\.0\.0\.1:5002\/auth\/login/);

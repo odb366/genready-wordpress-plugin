@@ -19,15 +19,16 @@ export function account(plan: 'free' | 'pro'): Account {
 	return all[plan] as Account;
 }
 
-export async function login(page: Page): Promise<void> {
+export async function login(page: Page, user = 'admin'): Promise<void> {
 	await page.goto('/wp-login.php');
-	await page.fill('#user_login', 'admin');
+	await page.fill('#user_login', user);
 	await page.fill('#user_pass', 'password');
 	await Promise.all([page.waitForURL(/\/wp-admin\//), page.click('#wp-submit')]);
 }
 
-export async function openGenReady(page: Page, tab: 'overview' | 'fixes' | 'connection' = 'overview'): Promise<void> {
-	const url = `/wp-admin/options-general.php?page=genready&tab=${tab}`;
+/** Open a GenReady tab. `site` is a sub-site path such as '/site2' on a multisite network. */
+export async function openGenReady(page: Page, tab: 'overview' | 'fixes' | 'connection' = 'overview', site = ''): Promise<void> {
+	const url = `${site}/wp-admin/options-general.php?page=genready&tab=${tab}`;
 	await page.goto(url);
 	if (!page.url().includes('page=genready')) {
 		// An SEO plugin may send the first admin visit to its setup wizard.
@@ -37,8 +38,8 @@ export async function openGenReady(page: Page, tab: 'overview' | 'fixes' | 'conn
 }
 
 /** Connect with an API key from the Overview tab and wait for the verify and scan steps to finish. */
-export async function connectWithKey(page: Page, key: string): Promise<void> {
-	await openGenReady(page);
+export async function connectWithKey(page: Page, key: string, site = ''): Promise<void> {
+	await openGenReady(page, 'overview', site);
 	await page.getByRole('button', { name: 'Use an API key' }).click();
 	await page.locator('#genready-key').fill(key);
 	await page.getByRole('button', { name: 'Connect with the key' }).click();
@@ -54,27 +55,27 @@ export async function connectWithKey(page: Page, key: string): Promise<void> {
 export const VERIFY_SHOWN = /^(Your site is verified\.|Could not load .*|GenReady is busy\. Try again in \d+ minutes?\.)/;
 
 /** A REST client for the test-only helper routes, with the logged-in cookies and a wp_rest nonce. */
-export async function helper(page: Page): Promise<Helper> {
-	const nonceResponse = await page.request.get('/wp-admin/admin-ajax.php?action=rest-nonce');
+export async function helper(page: Page, base = ''): Promise<Helper> {
+	const nonceResponse = await page.request.get(`${base}/wp-admin/admin-ajax.php?action=rest-nonce`);
 	expect(nonceResponse.ok()).toBeTruthy();
-	return new Helper(page.request, (await nonceResponse.text()).trim());
+	return new Helper(page.request, (await nonceResponse.text()).trim(), base);
 }
 
 export class Helper {
-	constructor(private request: APIRequestContext, private nonce: string) {}
+	constructor(private request: APIRequestContext, private nonce: string, private base = '') {}
 
 	private headers() {
 		return { 'X-WP-Nonce': this.nonce };
 	}
 
 	async get(path: string): Promise<any> {
-		const response = await this.request.get(`/wp-json/genready-e2e/v1${path}`, { headers: this.headers() });
+		const response = await this.request.get(`${this.base}/wp-json/genready-e2e/v1${path}`, { headers: this.headers() });
 		expect(response.status(), `GET ${path}`).toBe(200);
 		return response.json();
 	}
 
 	async post(path: string, data: object = {}): Promise<any> {
-		const response = await this.request.post(`/wp-json/genready-e2e/v1${path}`, { headers: this.headers(), data });
+		const response = await this.request.post(`${this.base}/wp-json/genready-e2e/v1${path}`, { headers: this.headers(), data });
 		expect(response.status(), `POST ${path}`).toBe(200);
 		return response.json();
 	}

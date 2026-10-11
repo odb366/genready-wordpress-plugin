@@ -1,0 +1,35 @@
+{
+	"$schema": "https://playground.wordpress.net/blueprint-schema.json",
+	"features": {
+		"networking": true
+	},
+	"extraLibraries": [
+		"wp-cli"
+	],
+	"steps": [
+		{
+			"step": "defineWpConfigConsts",
+			"consts": {
+				"GENREADY_API_BASE": "http://127.0.0.1:5002",
+				"WP_ENVIRONMENT_TYPE": "local"
+			}
+		},
+		{
+			"step": "enableMultisite"
+		},
+		{
+			"step": "writeFile",
+			"path": "/wordpress/robots.txt",
+			"data": "# Written by hand before GenReady\nUser-agent: *\nDisallow: /private/\n"
+		},
+		{
+			"step": "writeFile",
+			"path": "/wordpress/llms.txt",
+			"data": "# Hand-written llms.txt\n\n> Written before GenReady.\n"
+		},
+		{
+			"step": "runPHP",
+			"code": "<?php\nrequire '/wordpress/wp-load.php';\nrequire_once ABSPATH . 'wp-admin/includes/plugin.php';\nactivate_plugin( 'genready/genready.php', '', true );\n$site_id = wpmu_create_blog( '127.0.0.1', '/site2/', 'Second site', 1, array( 'public' => 1 ) );\n$user_id = wp_create_user( 'subadmin', 'password', 'subadmin@example.com' );\nremove_user_from_blog( $user_id, 1 );\nadd_user_to_blog( $site_id, $user_id, 'administrator' );\nupdate_option( 'genready_settings', array( 'last_report_id' => '63720e48-6d92-4e0a-a862-a141951beb22' ) );\n"
+		}
+	]
+}
