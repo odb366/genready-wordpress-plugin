@@ -171,7 +171,8 @@ class ViewsTest extends TestCase {
 		$this->assert_safe( $html );
 		$this->assertStringContainsString( 'https://genready.ai/terms', $html );
 		$this->assertStringContainsString( 'https://genready.ai/privacy', $html );
-		$this->assertStringContainsString( 'checked="checked"', $html, 'the email box is on by default' );
+		$this->assertMatchesRegularExpression( '/<input type="checkbox" id="genready-send-email"[^>]*>/', $html );
+		$this->assertDoesNotMatchRegularExpression( '/<input type="checkbox" id="genready-send-email"[^>]*checked/', $html, 'the email box is off by default' );
 	}
 
 	public function test_fixes_view_hides_the_file_action_when_the_site_may_not_write(): void {

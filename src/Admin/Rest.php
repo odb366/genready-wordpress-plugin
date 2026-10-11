@@ -135,7 +135,7 @@ final class Rest {
 			'sanitize_callback' => 'rest_sanitize_boolean',
 			'validate_callback' => 'rest_validate_request_arg',
 		);
-		$this->route( '/connect/oauth', 'POST', 'connect_oauth', array( 'send_email' => array_merge( $boolean, array( 'default' => true ) ) ) );
+		$this->route( '/connect/oauth', 'POST', 'connect_oauth', array( 'send_email' => array_merge( $boolean, array( 'default' => false ) ) ) );
 		$this->route(
 			'/connect/key',
 			'POST',
@@ -187,7 +187,7 @@ final class Rest {
 		if ( null !== $this->store->load() ) {
 			return $this->error( __( 'Disconnect GenReady first.', 'genready' ), 'CONNECTED' );
 		}
-		return array( 'url' => $this->oauth->authorize_url( get_current_user_id(), false !== $request->get_param( 'send_email' ) ) );
+		return array( 'url' => $this->oauth->authorize_url( get_current_user_id(), true === $request->get_param( 'send_email' ) ) );
 	}
 
 	/**

@@ -559,6 +559,21 @@ class RestTest extends TestCase {
 		$this->assertStringNotContainsString( 'login_hint', $result['url'] );
 	}
 
+	public function test_send_email_is_off_unless_the_box_is_ticked(): void {
+		$routes = array();
+		Monkey\Functions\when( 'register_rest_route' )->alias( function ( $ns, $path, $args ) use ( &$routes ) { $routes[ $path ] = $args; } );
+		$this->rest()->register();
+		$this->assertFalse( $routes['/connect/oauth']['args']['send_email']['default'] );
+
+		Monkey\Functions\when( 'wp_generate_password' )->justReturn( str_repeat( 'k', 32 ) );
+		Monkey\Functions\when( 'get_userdata' )->justReturn( (object) array( 'user_email' => 'admin@example.com' ) );
+		Monkey\Functions\when( 'is_email' )->justReturn( true );
+		$missing = $this->rest()->connect_oauth( new FakeRequest() );
+		$this->assertStringNotContainsString( 'login_hint', $missing['url'], 'no param: no email' );
+		$ticked = $this->rest()->connect_oauth( new FakeRequest( array( 'send_email' => true ) ) );
+		$this->assertStringContainsString( 'login_hint=admin%40example.com', $ticked['url'] );
+	}
+
 	public function test_remove_tag_disables_the_meta_and_purges_the_home_page(): void {
 		$this->options['genready_meta'] = 'tok12345678';
 		$this->assertSame( array( 'ok' => true ), $this->rest()->remove_tag( new FakeRequest() ) );

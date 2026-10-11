@@ -35,7 +35,7 @@ if ( ! $connected ) :
 		</p>
 		<p>
 			<label>
-				<input type="checkbox" id="genready-send-email" data-genready-input="send_email" checked="checked">
+				<input type="checkbox" id="genready-send-email" data-genready-input="send_email">
 				<?php esc_html_e( 'Send my admin email to fill in the sign-in form', 'genready' ); ?>
 			</label>
 		</p>
