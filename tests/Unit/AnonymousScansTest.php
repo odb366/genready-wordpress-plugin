@@ -123,6 +123,26 @@ class AnonymousScansTest extends TestCase {
 		$this->assertSame( 429, $result['status'] );
 	}
 
+	// A 401 or 404 here has no account behind it: "Reconnect GenReady." would be wrong.
+	public function test_start_shows_account_texts_only_for_codes_that_make_sense_without_an_account(): void {
+		foreach ( array( new ApiError( 401, 'UNAUTHORIZED', '' ), new ApiError( 404, 'NOT_FOUND', '' ), new ApiError( 402, 'PLAN_REQUIRED', '' ) ) as $error ) {
+			$this->client->public_result = $error;
+			$result                      = $this->scans()->start( 'https://example.com/' );
+			$this->assertSame( 'GenReady could not do this. Try again.', $result['error'], $error->code );
+			$this->assertSame( $error->code, $result['code'] );
+		}
+		$this->client->public_result = new ApiError( null, 'TIMEOUT', '' );
+		$this->assertSame( 'GenReady did not answer. Try again.', $this->scans()->start( 'https://example.com/' )['error'] );
+	}
+
+	public function test_start_429_reads_a_wait_that_is_a_string_or_a_float(): void {
+		Monkey\Functions\when( 'wp_date' )->alias( function ( $format ) { return 'Y-m-d' === $format ? '2026-10-16' : '11:00'; } );
+		foreach ( array( '3600', 3600.0, 3600 ) as $wait ) {
+			$this->client->public_result = new ApiError( 429, 'RATE_LIMITED', '', array( 'retryAfterSeconds' => $wait ) );
+			$this->assertSame( 'Scan again after 11:00, or create a free account.', $this->scans()->start( 'https://example.com/' )['error'], var_export( $wait, true ) );
+		}
+	}
+
 	public function test_503_pauses_the_scans_for_an_hour(): void {
 		$this->client->public_result = new ApiError( 503, 'WP_ONBOARDING_OFF', '' );
 		$result                      = $this->scans()->start( 'https://example.com/' );

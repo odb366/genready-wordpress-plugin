@@ -213,7 +213,7 @@ final class AccountCreator {
 		if ( 429 === $error->status ) {
 			return self::refusal( __( 'Too many account requests today. Try again tomorrow.', 'genready' ), $error->code, 429 );
 		}
-		return self::refusal( $error->user_message(), $error->code, $error->status );
+		return self::refusal( AnonymousScans::error_text( $error ), $error->code, $error->status );
 	}
 
 	/**

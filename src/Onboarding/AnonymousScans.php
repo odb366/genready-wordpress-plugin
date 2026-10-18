@@ -31,6 +31,8 @@ final class AnonymousScans {
 	const UUID = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
 	/** Pattern of a scan token: 32 random bytes, base64url without padding. */
 	const TOKEN = '/^[A-Za-z0-9_-]{43}$/';
+	/** Error codes whose ApiError text makes sense without an account. A 429 has its own text. */
+	const PUBLIC_CODES = array( 'TIMEOUT', 'INVALID_URL', 'PROOF_FAILED', 'ACCOUNT_EXISTS', 'VERIFIED_ELSEWHERE', 'WP_ONBOARDING_OFF', 'INSECURE_BASE' );
 
 	/**
 	 * Encryption with the connection's key.
@@ -82,9 +84,9 @@ final class AnonymousScans {
 			self::note( $result );
 			if ( 429 === $result->status ) {
 				$wait = $result->details['retryAfterSeconds'] ?? 0;
-				return self::refusal( self::limit_message( is_int( $wait ) ? $wait : 0 ), $result->code, 429 );
+				return self::refusal( self::limit_message( is_numeric( $wait ) ? (int) $wait : 0 ), $result->code, 429 );
 			}
-			return self::refusal( $result->user_message(), $result->code, $result->status );
+			return self::refusal( self::error_text( $result ), $result->code, $result->status );
 		}
 		$id    = $result['scanId'] ?? null;
 		$token = $result['scanToken'] ?? null;
@@ -202,6 +204,17 @@ final class AnonymousScans {
 		if ( 503 === $error->status && 'WP_ONBOARDING_OFF' === $error->code ) {
 			set_transient( self::OFF, 1, HOUR_IN_SECONDS );
 		}
+	}
+
+	/**
+	 * The text of a failed call without an account. Other codes, such as an
+	 * unexpected 401 or 404, would get texts for a connected site
+	 * ("Reconnect GenReady."), so they get the general text.
+	 *
+	 * @param ApiError $error A failed call.
+	 */
+	public static function error_text( ApiError $error ): string {
+		return in_array( $error->code, self::PUBLIC_CODES, true ) ? $error->user_message() : __( 'GenReady could not do this. Try again.', 'genready' );
 	}
 
 	/**

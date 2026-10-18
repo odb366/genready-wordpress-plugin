@@ -186,6 +186,9 @@ class AccountCreatorTest extends TestCase {
 			'switch off'      => array( 503, 'WP_ONBOARDING_OFF', 'GenReady paused scans without an account. Connect with a GenReady account.' ),
 			'no answer'       => array( null, 'TIMEOUT', 'GenReady did not answer. Try again.' ),
 			'bad body'        => array( 400, 'VALIDATION_ERROR', 'GenReady could not do this. Try again.' ),
+			'no login here'   => array( 401, 'UNAUTHORIZED', 'GenReady could not do this. Try again.' ),
+			'not found'       => array( 404, 'NOT_FOUND', 'GenReady could not do this. Try again.' ),
+			'plan'            => array( 402, 'PLAN_REQUIRED', 'GenReady could not do this. Try again.' ),
 		);
 	}
 
