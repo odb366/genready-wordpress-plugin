@@ -72,7 +72,7 @@ class PluginTest extends TestCase {
 		Monkey\Functions\expect( 'get_option' )->never();
 		Monkey\Functions\expect( 'wp_remote_request' )->never();
 		Monkey\Functions\when( 'add_filter' )->justReturn( true );
-		Monkey\Actions\expectAdded( 'rest_api_init' )->twice();
+		Monkey\Actions\expectAdded( 'rest_api_init' )->times( 3 );
 		Monkey\Actions\expectAdded( 'admin_menu' )->once();
 		Monkey\Actions\expectAdded( 'admin_enqueue_scripts' )->once();
 		Monkey\Actions\expectAdded( 'admin_notices' )->once();

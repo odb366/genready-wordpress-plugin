@@ -23,6 +23,7 @@ use GenReady\Fixes\FixStore;
 use GenReady\Fixes\JsonLdFix;
 use GenReady\Fixes\LlmsTxtFix;
 use GenReady\Fixes\RobotsFix;
+use GenReady\Onboarding\Proof;
 use GenReady\Verification\MetaTag;
 
 defined( 'ABSPATH' ) || exit;
@@ -102,6 +103,9 @@ final class Plugin {
 		add_filter( SeoPlugins::SCHEMA_FILTERS['aioseo'], array( $jsonld, 'aioseo' ), 99 );
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+		// The one-time proof for "Create my free account". It is public; see Proof::register().
+		$proof = new Proof();
+		add_action( 'rest_api_init', array( $proof, 'register' ) );
 		add_action( 'admin_init', array( $this, 'maybe_handle_oauth_callback' ) );
 		add_action( 'admin_init', array( $this, 'register_privacy_text' ) );
 
