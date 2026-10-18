@@ -65,6 +65,11 @@ final class ApiError {
 			return __( 'The GenReady address (GENREADY_API_BASE) must start with https://.', 'genready' );
 		}
 		switch ( $this->status ) {
+			case 400:
+				if ( 'INVALID_URL' === $this->code ) {
+					return __( 'GenReady can check only pages that anyone can open on the internet.', 'genready' );
+				}
+				break;
 			case 401:
 				return __( 'Reconnect GenReady.', 'genready' );
 			case 402:
@@ -87,6 +92,12 @@ final class ApiError {
 				if ( 'NOT_VERIFIED' === $this->code ) {
 					return __( 'Verify this site first.', 'genready' );
 				}
+				if ( 'PROOF_FAILED' === $this->code ) {
+					return __( 'GenReady could not confirm that this site is yours. Connect with a GenReady account instead.', 'genready' );
+				}
+				if ( 'ACCOUNT_EXISTS' === $this->code ) {
+					return __( 'This email already has a GenReady account.', 'genready' );
+				}
 				break;
 			case 422:
 				if ( 'UNSAFE_MERGE' === $this->code && '' !== $this->message ) {
@@ -95,6 +106,11 @@ final class ApiError {
 				break;
 			case 429:
 				return $this->busy_message();
+			case 503:
+				if ( 'WP_ONBOARDING_OFF' === $this->code ) {
+					return __( 'GenReady paused scans without an account. Connect with a GenReady account.', 'genready' );
+				}
+				break;
 		}
 		return __( 'GenReady could not do this. Try again.', 'genready' );
 	}

@@ -113,6 +113,27 @@ class Client {
 	}
 
 	/**
+	 * Call a route that needs no account: the scans and the account creation
+	 * of onboarding v2. It never sends the stored key or token and never
+	 * refreshes. A scan token goes in the Authorization header, never in the URL.
+	 *
+	 * @param string      $method  HTTP method.
+	 * @param string      $path    Path that starts with a slash.
+	 * @param array|null  $body    JSON body.
+	 * @param string|null $bearer  Scan token, or null for no Authorization header.
+	 * @param int         $timeout Timeout in seconds.
+	 * @return array|ApiError The `data` of the response, or an error.
+	 */
+	public function call_public( string $method, string $path, ?array $body = null, ?string $bearer = null, int $timeout = 15 ) {
+		$insecure = $this->insecure_base();
+		if ( null !== $insecure ) {
+			return $insecure;
+		}
+		$auth = null === $bearer || '' === $bearer ? array() : array( 'Authorization' => 'Bearer ' . $bearer );
+		return $this->dispatch( $method, $path, $body, $timeout, $auth );
+	}
+
+	/**
 	 * The GenReady address. A method, so tests can use another one.
 	 */
 	protected function api_base(): string {
@@ -154,16 +175,32 @@ class Client {
 			return new ApiError( 401, 'RECONNECT', '' );
 		}
 		$secret = 'oauth' === ( $connection['method'] ?? '' ) ? ( $connection['access_token'] ?? '' ) : ( $connection['api_key'] ?? '' );
-		$args   = array(
+		return $this->dispatch( $method, $path, $body, $timeout, array( 'Authorization' => 'Bearer ' . $secret ) );
+	}
+
+	/**
+	 * Send one JSON request and read the v1 envelope.
+	 *
+	 * @param string     $method  HTTP method.
+	 * @param string     $path    Path.
+	 * @param array|null $body    JSON body.
+	 * @param int        $timeout Timeout in seconds.
+	 * @param array      $auth    The Authorization header, or an empty array.
+	 * @return array|ApiError
+	 */
+	private function dispatch( string $method, string $path, ?array $body, int $timeout, array $auth ) {
+		$args = array(
 			'method'      => $method,
 			'timeout'     => $timeout,
 			'redirection' => 0,
 			'sslverify'   => true,
-			'headers'     => array(
-				'Authorization' => 'Bearer ' . $secret,
-				'Content-Type'  => 'application/json',
-				'Accept'        => 'application/json',
-				'User-Agent'    => $this->user_agent(),
+			'headers'     => array_merge(
+				$auth,
+				array(
+					'Content-Type' => 'application/json',
+					'Accept'       => 'application/json',
+					'User-Agent'   => $this->user_agent(),
+				)
 			),
 		);
 		if ( null !== $body ) {

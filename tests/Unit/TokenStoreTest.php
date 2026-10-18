@@ -88,4 +88,12 @@ class TokenStoreTest extends TestCase {
 		$store->release_lock();
 		$this->assertArrayNotHasKey( TokenStore::LOCK, $this->db->rows );
 	}
+
+	public function test_encrypt_and_decrypt_are_public_and_round_trip(): void {
+		$store  = new TokenStore();
+		$cipher = $store->encrypt( 'scan-token' );
+		$this->assertNotSame( 'scan-token', $cipher );
+		$this->assertSame( 'scan-token', $store->decrypt( $cipher ) );
+		$this->assertNull( $store->decrypt( 'not base64 !' ) );
+	}
 }

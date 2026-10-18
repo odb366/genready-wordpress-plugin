@@ -146,10 +146,11 @@ class TokenStore {
 
 	/**
 	 * Encrypt a value as base64( nonce . cipher ).
+	 * Public, so `Onboarding\AnonymousScans` uses the same key and format.
 	 *
 	 * @param string $plain Plain text.
 	 */
-	private function encrypt( string $plain ): string {
+	public function encrypt( string $plain ): string {
 		$nonce = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- encodes ciphertext for storage.
 		return base64_encode( $nonce . sodium_crypto_secretbox( $plain, $nonce, $this->key() ) );
@@ -157,10 +158,11 @@ class TokenStore {
 
 	/**
 	 * Decrypt a stored value, or null when it does not decrypt.
+	 * Public, so `Onboarding\AnonymousScans` uses the same key and format.
 	 *
 	 * @param string $stored Stored text.
 	 */
-	private function decrypt( string $stored ): ?string {
+	public function decrypt( string $stored ): ?string {
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- decodes stored ciphertext.
 		$raw = base64_decode( $stored, true );
 		if ( false === $raw || strlen( $raw ) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES ) {
