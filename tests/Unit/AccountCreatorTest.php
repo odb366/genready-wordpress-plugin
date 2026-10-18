@@ -55,6 +55,7 @@ class AccountCreatorTest extends TestCase {
 		Monkey\Functions\when( 'sanitize_email' )->alias( function ( $e ) { return trim( (string) $e ); } );
 		Monkey\Functions\when( 'is_email' )->alias( function ( $e ) { return false !== filter_var( $e, FILTER_VALIDATE_EMAIL ) ? $e : false; } );
 		Monkey\Functions\when( 'get_current_user_id' )->justReturn( 7 );
+		Monkey\Functions\when( 'wp_cache_delete' )->justReturn( true ); // The option doubles keep no request cache.
 		Monkey\Functions\when( '__' )->returnArg( 1 );
 		$this->store  = new TokenStore();
 		$this->client = new FakeClient();

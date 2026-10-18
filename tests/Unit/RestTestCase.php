@@ -71,6 +71,7 @@ abstract class RestTestCase extends TestCase {
 		Monkey\Functions\when( 'home_url' )->alias( function ( $path = '' ) { return 'https://example.com' . $path; } );
 		Monkey\Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
 		Monkey\Functions\when( 'get_current_user_id' )->justReturn( 7 );
+		Monkey\Functions\when( 'wp_cache_delete' )->justReturn( true ); // The option doubles keep no request cache.
 		Monkey\Functions\when( 'current_user_can' )->justReturn( true );
 		Monkey\Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
 		Monkey\Functions\when( 'rest_url' )->alias( function ( $p ) { return 'https://example.com/wp-json/' . $p; } );

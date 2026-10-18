@@ -20,8 +20,8 @@ final class Proof {
 	const OPTION = 'genready_proof';
 	/** Seconds a proof stays valid. */
 	const TTL = 120;
-	/** Pattern of a proof ID. */
-	const ID = '/^[a-f0-9]{32}$/';
+	/** Pattern of a proof ID. \z: a trailing newline does not match. */
+	const ID = '/^[a-f0-9]{32}\z/';
 
 	/**
 	 * Register the proof route. Hooked on rest_api_init.
@@ -68,6 +68,9 @@ final class Proof {
 	 * @param string $id Proof ID from create().
 	 */
 	public function discard( string $id ): void {
+		// get_option() would return this request's cached copy, which still holds
+		// our own proof after another request replaced the row (Review Focus 4).
+		wp_cache_delete( self::OPTION, 'options' );
 		$stored = get_option( self::OPTION );
 		if ( is_array( $stored ) && is_string( $stored['id'] ?? null ) && hash_equals( $stored['id'], $id ) ) {
 			delete_option( self::OPTION );
@@ -81,7 +84,13 @@ final class Proof {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function serve( $request ) {
-		$id     = (string) $request->get_param( 'id' );
+		if ( 'GET' !== $request->get_method() ) {
+			// WordPress sends HEAD to this handler too. Only a GET may use up the proof.
+			return self::missing();
+		}
+		// The route segment, not get_param(): a query value such as ?id[]=x would win there.
+		$params = $request->get_url_params();
+		$id     = is_string( $params['id'] ?? null ) ? $params['id'] : '';
 		$stored = get_option( self::OPTION );
 		if ( 1 !== preg_match( self::ID, $id ) || ! is_array( $stored ) || ! is_string( $stored['id'] ?? null )
 			|| ! is_string( $stored['secret'] ?? null ) || ! is_int( $stored['created'] ?? null ) ) {
@@ -91,7 +100,11 @@ final class Proof {
 			return self::missing();
 		}
 		$age = time() - $stored['created'];
-		if ( $age < 0 || $age > self::TTL ) {
+		if ( $age > self::TTL ) {
+			delete_option( self::OPTION ); // It lives 2 minutes at most.
+			return self::missing();
+		}
+		if ( $age < 0 ) {
 			return self::missing();
 		}
 		// The single-use guard: the database deletes the row for one request only.
