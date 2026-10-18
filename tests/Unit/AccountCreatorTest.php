@@ -226,6 +226,20 @@ class AccountCreatorTest extends TestCase {
 		$this->assertArrayNotHasKey( Proof::OPTION, $this->options );
 	}
 
+	// sanitize_email() removes characters it does not allow, so "jo hn@example.com" would become john@example.com.
+	public function test_an_email_that_sanitize_email_changes_is_refused_without_a_call(): void {
+		Monkey\Functions\when( 'sanitize_email' )->alias( function ( $e ) { return str_replace( ' ', '', trim( (string) $e ) ); } );
+		foreach ( array( 'jo hn@example.com', 'kris@hd robots.com' ) as $email ) {
+			$result = $this->creator()->create( $email );
+			$this->assertSame( 'Enter a valid email address.', $result['error'], $email );
+			$this->assertSame( 'INVALID_EMAIL', $result['code'] );
+		}
+		$this->assertSame( array(), $this->client->publics );
+		$this->assertArrayNotHasKey( Proof::OPTION, $this->options );
+		$this->client->public_result = $this->success();
+		$this->assertTrue( $this->creator()->create( ' owner@example.com ' )['ok'], 'spaces around the address are fine' );
+	}
+
 	public function test_a_bad_success_answer_stores_nothing(): void {
 		$answer                      = $this->success();
 		$answer['apiKey']            = 'sk_not_a_genready_key';

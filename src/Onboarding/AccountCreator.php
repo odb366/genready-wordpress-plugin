@@ -95,8 +95,10 @@ final class AccountCreator {
 		if ( null !== $this->store->load() ) {
 			return self::refusal( __( 'Disconnect GenReady first.', 'genready' ), 'CONNECTED', null );
 		}
-		$email = sanitize_email( trim( $email ) );
-		if ( '' === $email || strlen( $email ) > self::MAX_EMAIL || ! is_email( $email ) ) {
+		$typed = trim( $email );
+		$email = sanitize_email( $typed );
+		// sanitize_email() drops characters it does not allow. A changed address is not the one the admin typed.
+		if ( '' === $email || $email !== $typed || strlen( $email ) > self::MAX_EMAIL || ! is_email( $email ) ) {
 			return self::refusal( __( 'Enter a valid email address.', 'genready' ), 'INVALID_EMAIL', null );
 		}
 		if ( AnonymousScans::paused() ) {
