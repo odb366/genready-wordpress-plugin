@@ -117,7 +117,7 @@
 				ui.say( scanResult, __( 'Scanning this page. This takes about 30 seconds.', 'genready' ), 'info' );
 				try {
 					var result = await ui.call( 'POST', '/scan', { url: input ? input.value : '' } );
-					ui.poll( scanResult, result && typeof result.scan_id === 'string' ? result.scan_id : '' );
+					await ui.poll( scanResult, result && typeof result.scan_id === 'string' ? result.scan_id : '' );
 				} catch ( error ) {
 					fail( scanResult, error );
 				}

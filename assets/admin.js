@@ -305,39 +305,41 @@
 		}
 	}
 
-	// Poll every 5 seconds. With a scan ID (no account) it reads that stored scan and opens it when done.
+	// Poll every 5 seconds; resolves when polling stops. With a scan ID (no account) it reads that stored scan and opens it when done.
 	function poll( region, scanId ) {
 		var started = Date.now();
 		var path = '/report' + ( scanId ? '?scan=' + encodeURIComponent( scanId ) : '' );
 		var done = data.overviewUrl + ( scanId ? '&scan=' + encodeURIComponent( scanId ) : '' );
-		var tick = async function () {
-			if ( Date.now() - started > POLL_LIMIT_MS ) {
-				say( region, __( 'The scan is taking longer than usual. Reload the page later.', 'genready' ), 'warning' );
-				return;
-			}
-			var state;
-			try {
-				state = await call( 'GET', path );
-			} catch ( error ) {
-				showError( region, error );
-				return;
-			}
-			if ( state && state.state === 'complete' ) {
-				say( region, __( 'The scan is done. Loading the report…', 'genready' ), 'success' );
-				window.location.assign( done );
-				return;
-			}
-			if ( state && ( state.state === 'failed' || state.state === 'gone' ) ) {
-				say( region, typeof state.message === 'string' && state.message ? state.message : __( 'The scan did not finish. Scan again.', 'genready' ), 'error' );
-				return;
-			}
-			if ( state && state.state === 'none' ) {
-				say( region, __( 'GenReady lost this scan. Scan again.', 'genready' ), 'error' );
-				return;
-			}
+		return new Promise( function ( stop ) {
+			var tick = async function () {
+				if ( Date.now() - started > POLL_LIMIT_MS ) {
+					say( region, __( 'The scan is taking longer than usual. Reload the page later.', 'genready' ), 'warning' );
+					return stop();
+				}
+				var state;
+				try {
+					state = await call( 'GET', path );
+				} catch ( error ) {
+					showError( region, error );
+					return stop();
+				}
+				if ( state && state.state === 'complete' ) {
+					say( region, __( 'The scan is done. Loading the report…', 'genready' ), 'success' );
+					window.location.assign( done );
+					return stop();
+				}
+				if ( state && ( state.state === 'failed' || state.state === 'gone' ) ) {
+					say( region, typeof state.message === 'string' && state.message ? state.message : __( 'The scan did not finish. Scan again.', 'genready' ), 'error' );
+					return stop();
+				}
+				if ( state && state.state === 'none' ) {
+					say( region, __( 'GenReady lost this scan. Scan again.', 'genready' ), 'error' );
+					return stop();
+				}
+				window.setTimeout( tick, POLL_MS );
+			};
 			window.setTimeout( tick, POLL_MS );
-		};
-		window.setTimeout( tick, POLL_MS );
+		} );
 	}
 
 	// Scan a page ('' = the home page) and poll it.
@@ -345,7 +347,7 @@
 		say( region, __( 'Scanning this page. This takes about 30 seconds.', 'genready' ), 'info' );
 		try {
 			var result = await call( 'POST', '/scan', url ? { url: url } : null );
-			poll( region, result && typeof result.scan_id === 'string' ? result.scan_id : '' );
+			await poll( region, result && typeof result.scan_id === 'string' ? result.scan_id : '' );
 		} catch ( error ) {
 			showError( region, error );
 		}

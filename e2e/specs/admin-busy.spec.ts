@@ -119,6 +119,7 @@ test('a button that was disabled before the call stays disabled after it', async
 });
 
 test('verify, scan and the connection actions lock each other', async ({ page }) => {
+	await page.clock.install();
 	await open(page);
 	await action(page, '.genready-connection', 'verify').click();
 	await expect(action(page, '.genready-admin', 'scan')).toBeDisabled();
@@ -133,5 +134,10 @@ test('verify, scan and the connection actions lock each other', async ({ page })
 	await action(page, '.genready-admin', 'scan').click();
 	await expect(action(page, '.genready-connection', 'verify')).toBeDisabled();
 	expect(await answer(page, { report_id: 'x' })).toBe('/genready/v1/scan');
+	// The lock lasts until the poll ends, not only until the scan call returns.
+	await expect(action(page, '.genready-connection', 'verify')).toBeDisabled();
+	await page.clock.runFor(5_000);
+	await expect.poll(() => page.evaluate(() => (window as unknown as { genreadyCalls: unknown[] }).genreadyCalls.length)).toBe(1);
+	expect(await answer(page, { state: 'none' })).toBe('/genready/v1/report');
 	await expect(action(page, '.genready-connection', 'verify')).toBeEnabled();
 });

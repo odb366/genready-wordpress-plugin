@@ -113,6 +113,21 @@ test('Check this page: Enter submits, the poll uses the scan ID, then the report
 	await page.waitForURL(`${OVERVIEW}&scan=${SCAN_ID}`);
 });
 
+test('both forms stay disabled until the scan poll ends', async ({ page }) => {
+	await open(page);
+	const check = page.getByRole('button', { name: 'Check this page' });
+	const create = page.getByRole('button', { name: 'Create my free account' });
+	await check.click();
+	await settle(page, { value: { scan_id: SCAN_ID } });
+	await page.clock.runFor(5_000);
+	await settle(page, { value: { state: 'pending', scan_id: SCAN_ID } });
+	await expect(check).toBeDisabled();
+	await expect(create).toBeDisabled();
+	await page.clock.runFor(5_000);
+	await settle(page, { value: { state: 'complete', scan_id: SCAN_ID } });
+	await page.waitForURL(`${OVERVIEW}&scan=${SCAN_ID}`);
+});
+
 test('a scan error gets the focus; a 503 hides both forms and opens Connect', async ({ page }) => {
 	await open(page);
 	const region = page.locator('#genready-scan-result');
