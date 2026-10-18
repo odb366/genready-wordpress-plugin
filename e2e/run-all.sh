@@ -90,10 +90,10 @@ seed pro
 
 # admin.js busy states: a page without WordPress, no Playground needed.
 start=$(date +%s)
-if (cd "$E2E_DIR" && npx playwright test specs/admin-busy.spec.ts); then
-	printf '| %-30s | %-26s | %-3s | PASS | %4ss |\n' "admin-busy (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
+if (cd "$E2E_DIR" && npx playwright test specs/admin-busy.spec.ts specs/onboarding-ui.spec.ts); then
+	printf '| %-30s | %-26s | %-3s | PASS | %4ss |\n' "admin-busy, onboarding-ui (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
 else
-	printf '| %-30s | %-26s | %-3s | FAIL | %4ss |\n' "admin-busy (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
+	printf '| %-30s | %-26s | %-3s | FAIL | %4ss |\n' "admin-busy, onboarding-ui (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
 	failed=1
 fi
 

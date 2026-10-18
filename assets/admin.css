@@ -271,3 +271,40 @@
 		transition: background-color 0.15s ease-in-out;
 	}
 }
+
+/* Onboarding without an account (spec 4). */
+.genready-admin .genready-start h2,
+.genready-admin .genready-account h2 {
+	margin-top: 0;
+}
+
+.genready-admin .genready-account {
+	border-left: 4px solid #2271b1;
+}
+
+.genready-admin .genready-scan-form input[type="url"],
+.genready-admin .genready-account-form input[type="email"] {
+	width: 100%;
+	max-width: 32rem;
+}
+
+.genready-admin .genready-recent ul {
+	margin: 0;
+}
+
+.genready-admin .genready-recent li {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	align-items: baseline;
+}
+
+.genready-admin .genready-recent [aria-current="true"] {
+	font-weight: 600;
+}
+
+.genready-admin .genready-recent__date,
+.genready-admin .genready-aiview__url {
+	color: #50575e;
+	overflow-wrap: anywhere;
+}

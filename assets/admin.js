@@ -28,7 +28,7 @@
 	var PLAN_CODES = [ 'PLAN_REQUIRED', 'DOMAIN_LIMIT_REACHED', 'CREDITS_EXHAUSTED' ];
 	var WRITE_CODES = [ 'CANNOT_WRITE', 'WRITE_FAILED' ];
 	var FILE_NAMES = { robots: 'robots.txt', llms: 'llms.txt' };
-	var CONNECTION_ACTIONS = [ 'connect', 'verify', 'scan', 'disconnect', 'remove-tag' ];
+	var CONNECTION_ACTIONS = [ 'connect', 'verify', 'scan', 'disconnect', 'remove-tag', 'check', 'create-account' ];
 	var FIELD_LABELS = {
 		headline: __( 'Headline', 'genready' ),
 		name: __( 'Name', 'genready' ),
@@ -305,8 +305,11 @@
 		}
 	}
 
-	function poll( region ) {
+	// Poll every 5 seconds. With a scan ID (no account) it reads that stored scan and opens it when done.
+	function poll( region, scanId ) {
 		var started = Date.now();
+		var path = '/report' + ( scanId ? '?scan=' + encodeURIComponent( scanId ) : '' );
+		var done = data.overviewUrl + ( scanId ? '&scan=' + encodeURIComponent( scanId ) : '' );
 		var tick = async function () {
 			if ( Date.now() - started > POLL_LIMIT_MS ) {
 				say( region, __( 'The scan is taking longer than usual. Reload the page later.', 'genready' ), 'warning' );
@@ -314,17 +317,17 @@
 			}
 			var state;
 			try {
-				state = await call( 'GET', '/report' );
+				state = await call( 'GET', path );
 			} catch ( error ) {
 				showError( region, error );
 				return;
 			}
 			if ( state && state.state === 'complete' ) {
 				say( region, __( 'The scan is done. Loading the report…', 'genready' ), 'success' );
-				window.location.assign( data.overviewUrl );
+				window.location.assign( done );
 				return;
 			}
-			if ( state && state.state === 'failed' ) {
+			if ( state && ( state.state === 'failed' || state.state === 'gone' ) ) {
 				say( region, typeof state.message === 'string' && state.message ? state.message : __( 'The scan did not finish. Scan again.', 'genready' ), 'error' );
 				return;
 			}
@@ -337,21 +340,21 @@
 		window.setTimeout( tick, POLL_MS );
 	}
 
-	async function scan( region ) {
-		say( region, __( 'Scanning your home page. This takes about a minute.', 'genready' ), 'info' );
+	// Scan a page ('' = the home page) and poll it.
+	async function scan( region, url ) {
+		say( region, __( 'Scanning this page. This takes about 30 seconds.', 'genready' ), 'info' );
 		try {
-			await call( 'POST', '/scan' );
+			var result = await call( 'POST', '/scan', url ? { url: url } : null );
+			poll( region, result && typeof result.scan_id === 'string' ? result.scan_id : '' );
 		} catch ( error ) {
 			showError( region, error );
-			return;
 		}
-		poll( region );
 	}
 
 	/** After a connection: verify, then scan (a scan needs no verification). */
 	async function afterConnect() {
 		await verify( setupLine( 'verify' ) );
-		await scan( setupLine( 'scan' ) );
+		await scan( setupLine( 'scan' ), '' );
 	}
 
 	/* ---------- Connect ---------- */
@@ -409,8 +412,8 @@
 	/* ---------- Overview ---------- */
 
 	function initOverview() {
-		onAction( root, 'scan', function () {
-			return scan( setupLine( 'scan' ) );
+		onAction( root, 'scan', function ( button ) {
+			return scan( setupLine( 'scan' ), button.getAttribute( 'data-genready-url' ) || '' );
 		}, connectionButtons );
 
 		var toggles = root.querySelectorAll( '[data-genready-view]' );
@@ -757,6 +760,21 @@
 		}, connectionButtons );
 	}
 
+	/* ---------- Shared with onboarding.js ---------- */
+
+	data.ui = {
+		call: call,
+		make: make,
+		makeButton: makeButton,
+		say: say,
+		showError: showError,
+		errorCode: errorCode,
+		errorText: errorText,
+		busy: busy,
+		poll: poll,
+		connectionButtons: connectionButtons,
+	};
+
 	/* ---------- Start ---------- */
 
 	initConnect();
@@ -771,6 +789,6 @@
 			unlock( starting );
 		} );
 	} else if ( data.reportState === 'pending' ) {
-		poll( setupLine( 'scan' ) );
+		poll( setupLine( 'scan' ), typeof data.scanId === 'string' ? data.scanId : '' );
 	}
 }() );
