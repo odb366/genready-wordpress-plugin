@@ -295,10 +295,13 @@ class PageTest extends TestCase {
 	// Review Focus 3.
 	public function test_overview_shows_the_first_screen_after_the_salts_change(): void {
 		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->assertArrayHasKey( AnonymousScans::OPTION, $this->options );
 		Monkey\Functions\when( 'wp_salt' )->justReturn( str_repeat( 'x', 64 ) );
 		$html = $this->render();
-		$this->assertStringContainsString( 'See how AI search engines and agents read your site', $html );
+		$this->assertStringContainsString( '<h2 id="genready-start-title">', $html );
+		$this->assertStringNotContainsString( 'genready-account-form', $html, 'not the anonymous Overview' );
 		$this->assertSame( array(), $this->client->publics );
+		$this->assertArrayNotHasKey( AnonymousScans::OPTION, $this->options, 'the broken entry is dropped' );
 	}
 
 	public function test_the_account_notice_shows_two_lines_and_skips_the_setup(): void {
