@@ -12,10 +12,15 @@
 #                              without a port; the multisite spec maps it back to 9411 in the browser)
 #   GENREADY_E2E_WORKERS       Playground PHP workers (default 1; the account spec needs 2, spec 7.5)
 #   GENREADY_E2E_MIN_MB        free memory that the host check needs (default 1200)
+#   GENREADY_E2E_ABORT_MB      the run stops when available memory falls below this while Playground runs
+#                              (default 500; checked every 3 s)
 #
 # Host safety: the script refuses to start while a GenReady deploy runs or when the host has
-# 1200 MB or less available memory (it waits up to 10 minutes). It runs one Playground (1 worker
-# unless GENREADY_E2E_WORKERS says otherwise) on 127.0.0.1:9411 and stops it on exit.
+# GENREADY_E2E_MIN_MB (default 1200) or less available memory (it waits up to 10 minutes). It runs one Playground (1 worker
+# unless GENREADY_E2E_WORKERS says otherwise) on 127.0.0.1:9411 and stops it on exit. While it runs,
+# a watchdog reads the available memory every 3 s. Below GENREADY_E2E_ABORT_MB it stops Playground and
+# the tests, and the run fails with "ABORTED: host memory below N MB" (exit 6). At the end the script
+# prints the lowest available memory that the watchdog saw.
 set -euo pipefail
 
 E2E_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -26,6 +31,7 @@ PHP_VERSION=${GENREADY_E2E_PHP:-8.3}
 PLUGIN_DIR=${GENREADY_E2E_PLUGIN_DIR:-$ROOT}
 MOUNT_AT=${GENREADY_E2E_MOUNT_AT:-/wordpress/wp-content/plugins/genready}
 PORT=9411
+ABORT_MB=${GENREADY_E2E_ABORT_MB:-500}
 LOG_DIR="$E2E_DIR/test-results"
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/playground-$(basename "$BLUEPRINT" .json).log"
@@ -61,7 +67,57 @@ stop_playground() {
 	done
 	for pid in $(playground_pids); do kill -KILL "$pid" 2>/dev/null || true; done
 }
-trap stop_playground EXIT
+
+# Stop a process and every process under it (npx, the Playwright runner, its workers, the browser).
+kill_tree() {
+	local child
+	for child in $(pgrep -P "$1" || true); do kill_tree "$child"; done
+	kill -TERM "$1" 2>/dev/null || true
+}
+
+available_mb() {
+	free -m | awk 'NR==2 {print $7}'
+}
+
+# Memory watchdog: records the lowest available memory, and stops Playground and the tests below ABORT_MB.
+MIN_FILE="$LOG_DIR/memory-min-$$.txt"
+ABORT_FILE="$LOG_DIR/memory-abort-$$.txt"
+rm -f "$ABORT_FILE"
+available_mb >"$MIN_FILE"
+PW=
+(
+	while :; do
+		avail=$(available_mb)
+		if [ "$avail" -lt "$(cat "$MIN_FILE")" ]; then echo "$avail" >"$MIN_FILE"; fi
+		if [ "$avail" -lt "$ABORT_MB" ] && [ ! -f "$ABORT_FILE" ]; then echo "$avail" >"$ABORT_FILE"; fi
+		# After an abort, keep stopping Playground and the tests (they may start later) until the script exits.
+		if [ -f "$ABORT_FILE" ]; then
+			kill -TERM -- "-$PG" 2>/dev/null || true
+			if [ -f "$ABORT_FILE.pw" ]; then kill_tree "$(cat "$ABORT_FILE.pw")"; fi
+			sleep 1
+			continue
+		fi
+		sleep 3
+	done
+) &
+WATCH=$!
+
+on_exit() {
+	local status=$?
+	kill "$WATCH" 2>/dev/null || true
+	wait "$WATCH" 2>/dev/null || true
+	if [ -n "$PW" ]; then kill_tree "$PW"; fi
+	stop_playground
+	echo "host memory: the lowest available memory during the run was $(cat "$MIN_FILE") MB"
+	rm -f "$MIN_FILE" "$ABORT_FILE.pw"
+	if [ -f "$ABORT_FILE" ]; then
+		echo "ABORTED: host memory below $ABORT_MB MB ($(cat "$ABORT_FILE") MB available)" >&2
+		rm -f "$ABORT_FILE"
+		exit 6
+	fi
+	exit "$status"
+}
+trap on_exit EXIT
 
 ready=0
 for _ in $(seq 1 120); do
@@ -87,5 +143,10 @@ case "$powered" in
 esac
 
 cd "$E2E_DIR"
+[ ! -f "$ABORT_FILE" ] || exit 6
+# In the background, so the watchdog can stop it (kill_tree) while the script waits.
 GENREADY_E2E_SEO=${GENREADY_E2E_SEO:-none} GENREADY_E2E_PHP="$PHP_VERSION" \
-	npx playwright test "$@"
+	npx playwright test "$@" &
+PW=$!
+echo "$PW" >"$ABORT_FILE.pw"
+wait "$PW"

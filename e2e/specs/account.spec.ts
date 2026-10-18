@@ -86,6 +86,13 @@ test('plain permalinks: the proof passes through ?rest_route=', async ({ page })
 	const tools = await helper(page);
 	await tools.permalinks('');
 	try {
+		// Self-check: with plain permalinks /wp-json/ no longer routes to the REST API, ?rest_route= does.
+		const pretty = await page.request.get('/wp-json/');
+		const prettyBody = await pretty.text();
+		expect(prettyBody.includes('"namespaces"'), `/wp-json/ answered ${pretty.status()} with the REST index`).toBe(false);
+		const plain = await page.request.get('/?rest_route=/');
+		expect(plain.status()).toBe(200);
+		expect(Array.isArray((await plain.json()).namespaces)).toBe(true);
 		await tools.deleteOption('genready_anonymous_scans');
 		await seedScan(page);
 		await createAccount(page, `e2e-wp-${Date.now()}-c@genready.test`);

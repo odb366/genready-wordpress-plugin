@@ -293,7 +293,10 @@ add_action(
 		$post(
 			'/permalinks',
 			static function ( WP_REST_Request $request ) {
-				update_option( 'permalink_structure', (string) $request->get_param( 'structure' ) );
+				global $wp_rewrite;
+				// set_permalink_structure() updates the option and the in-memory rules, so the flush
+				// stores the rules of the new structure (update_option alone keeps the old ones).
+				$wp_rewrite->set_permalink_structure( (string) $request->get_param( 'structure' ) );
 				flush_rewrite_rules();
 				return array( 'ok' => true );
 			}
