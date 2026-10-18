@@ -119,7 +119,16 @@ abstract class RestTestCase extends TestCase {
 			$meta,
 			$this->caches,
 			new Reports( $this->store, $this->client, $scans ),
-			new FixCards( $this->fixes, $robots, $llms, $jsonld, $this->files ),
+			new FixCards(
+				$this->fixes,
+				$robots,
+				$llms,
+				$jsonld,
+				$this->files,
+				function (): bool {
+					return null !== $this->store->load();
+				}
+			),
 			$scans,
 			new AccountCreator( $this->store, $this->client, new Proof(), $scans, $meta, $this->caches )
 		);

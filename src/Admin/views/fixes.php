@@ -16,10 +16,6 @@ $connected = ! empty( $view['connected'] );
 $cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
 ?>
 <div class="genready-fixes">
-	<?php if ( ! $connected ) : ?>
-		<div class="notice notice-info inline"><p><?php esc_html_e( 'Connect GenReady to preview a fix. Undo works without a connection.', 'genready' ); ?></p></div>
-	<?php endif; ?>
-
 	<?php foreach ( $cards as $card ) : ?>
 		<?php
 		$kind = (string) ( $card['kind'] ?? '' );
@@ -38,6 +34,9 @@ $cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
 				<span class="<?php echo esc_attr( 'genready-state genready-state--' . (string) ( $card['state'] ?? 'not_applied' ) ); ?>" data-genready-field="state"><?php echo esc_html( (string) ( $card['state_text'] ?? '' ) ); ?></span>
 			</p>
 			<p class="genready-fix__message" data-genready-field="message"<?php echo '' === (string) ( $card['message'] ?? '' ) ? ' hidden' : ''; ?>><?php echo esc_html( (string) ( $card['message'] ?? '' ) ); ?></p>
+			<?php if ( ! empty( $card['account_link'] ) ) : ?>
+				<p class="genready-fix__account"><a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready#genready-account' ) ); ?>"><?php esc_html_e( 'Create my free account', 'genready' ); ?></a></p>
+			<?php endif; ?>
 			<p class="genready-fix__live" data-genready-field="live"<?php echo null === $live ? ' hidden' : ''; ?>><?php echo esc_html( null === $live ? '' : (string) ( $live['message'] ?? '' ) ); ?></p>
 
 			<?php if ( 'robots' === $kind ) : ?>

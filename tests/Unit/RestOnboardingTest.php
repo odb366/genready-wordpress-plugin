@@ -2,6 +2,7 @@
 namespace GenReady\Tests\Unit;
 
 use Brain\Monkey;
+use GenReady\Admin\FixCards;
 use GenReady\Api\ApiError;
 use GenReady\Onboarding\AnonymousScans;
 
@@ -135,5 +136,19 @@ class RestOnboardingTest extends RestTestCase {
 		$validate_url = $routes['/scan']['args']['url']['validate_callback'];
 		$this->assertFalse( call_user_func( $validate_url, str_repeat( 'a', 2049 ) ) );
 		$this->assertFalse( call_user_func( $validate_url, array() ) );
+	}
+
+	public function test_cards_without_a_connection_ask_for_an_account(): void {
+		$card = FixCards::without_account( array( 'applied' => true, 'message' => 'a refusal' ) );
+		$this->assertSame( 'Create a free account first. GenReady Pro and Agency generate this file. Undo works without a connection.', $card['message'] );
+		$this->assertTrue( $card['account_link'] );
+		$this->assertSame( 'Create a free account first. GenReady Pro and Agency generate this file.', FixCards::without_account( array( 'applied' => false ) )['message'] );
+	}
+
+	public function test_undo_without_a_connection_returns_the_account_text(): void {
+		$this->fixes->put( 'robots', array( 'mode' => 'virtual', 'content' => "User-agent: GPTBot\n", 'base_sha256' => str_repeat( 'a', 64 ), 'status' => 'applied' ) );
+		$result = $this->fix( $this->rest(), 'robots', 'undo' );
+		$this->assertSame( 'Create a free account first. GenReady Pro and Agency generate this file.', $result['card']['message'] );
+		$this->assertTrue( $result['card']['account_link'] );
 	}
 }

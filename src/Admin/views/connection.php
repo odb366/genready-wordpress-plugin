@@ -3,35 +3,35 @@
  * Connection tab, and the connect form when the site is not connected.
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: connected (bool), account (array from Reports::account(), or null), tag_on (bool).
+ * $view: connected (bool), account (array from Reports::account(), or null), tag_on (bool),
+ * paused (bool, true while GenReady paused scans without an account).
  *
  * @package GenReady
  */
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- included inside Page::view(); these variables are local.
 
+use GenReady\Admin\Page;
+
 defined( 'ABSPATH' ) || exit;
 
 $connected = ! empty( $view['connected'] );
 $account   = is_array( $view['account'] ?? null ) ? $view['account'] : array();
 $tag_on    = ! empty( $view['tag_on'] );
+$paused    = ! empty( $view['paused'] );
 $unknown   = __( 'Not known', 'genready' );
 
 if ( ! $connected ) :
 	?>
-	<section class="genready-card genready-connect" aria-labelledby="genready-connect-title">
+	<section class="genready-card genready-connect"<?php echo $paused ? ' id="genready-account"' : ''; ?> aria-labelledby="genready-connect-title">
 		<h2 id="genready-connect-title"><?php esc_html_e( 'Connect GenReady', 'genready' ); ?></h2>
+		<?php if ( $paused ) : ?>
+			<div class="notice notice-warning inline"><p><?php esc_html_e( 'GenReady paused scans without an account. Connect with a GenReady account.', 'genready' ); ?></p></div>
+		<?php endif; ?>
 		<p><?php esc_html_e( 'See how AI search engines and agents read your site, and apply fixes for robots.txt, llms.txt and structured data.', 'genready' ); ?></p>
 		<p class="genready-consent">
 			<?php esc_html_e( "Connecting sends this site's address to genready.ai.", 'genready' ); ?>
-			<?php
-			printf(
-				/* translators: 1: link to the Terms, 2: link to the Privacy Policy. */
-				esc_html__( "GenReady's %1\$s and %2\$s apply.", 'genready' ),
-				'<a href="' . esc_url( 'https://genready.ai/terms' ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Terms', 'genready' ) . '</a>',
-				'<a href="' . esc_url( 'https://genready.ai/privacy' ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Privacy Policy', 'genready' ) . '</a>'
-			);
-			?>
+			<?php echo Page::terms(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in Page::terms(). ?>
 		</p>
 		<p>
 			<label>

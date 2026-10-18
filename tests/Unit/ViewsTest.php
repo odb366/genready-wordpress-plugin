@@ -33,6 +33,7 @@ class ViewsTest extends TestCase {
 		Monkey\Functions\when( 'checked' )->alias( function ( $a, $b = true, $echo = true ) { $out = $a === $b ? ' checked="checked"' : ''; if ( $echo ) { echo $out; } return $out; } );
 		Monkey\Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
 		Monkey\Functions\when( 'wp_strip_all_tags' )->alias( 'strip_tags' );
+		Monkey\Functions\when( 'home_url' )->alias( function ( $p = '' ) { return 'https://example.com' . $p; } );
 	}
 
 	protected function tearDown(): void {
@@ -230,5 +231,39 @@ class ViewsTest extends TestCase {
 		$fixture['aiView']['screenshotUrl'] = 'https://evil.example/a.png';
 		$this->assertNull( Reports::summarize( $fixture )['ai_view']['screenshot'] );
 		$this->assertSame( 'https://genready.ai/screenshots/a.png', Reports::summarize( report_fixture() )['ai_view']['screenshot'] );
+	}
+
+	public function test_overview_names_a_page_that_is_not_the_home_page(): void {
+		$report = Reports::summarize( report_fixture( array( 'url' => 'https://example.com/pricing/' ) ) );
+		$html   = Page::view( 'overview', array( 'connected' => true, 'state' => array( 'state' => 'complete', 'report' => $report ) ) );
+		$this->assertStringContainsString( 'How AI sees this page', $html );
+		$this->assertStringNotContainsString( 'How AI sees your homepage', $html );
+		$this->assertStringContainsString( '<p class="genready-aiview__url">https://example.com/pricing/</p>', $html );
+		$this->assertStringContainsString( 'alt="Screenshot of this page"', $html );
+		$this->assertStringContainsString( 'data-genready-url="https://example.com/pricing/"', $html );
+	}
+
+	public function test_overview_of_the_home_page_keeps_the_homepage_texts(): void {
+		$report = Reports::summarize( report_fixture() );
+		$html   = Page::view( 'overview', array( 'connected' => true, 'state' => array( 'state' => 'complete', 'report' => $report ) ) );
+		$this->assertStringContainsString( 'How AI sees your homepage', $html );
+		$this->assertStringContainsString( 'alt="Screenshot of your homepage"', $html );
+		$this->assertStringNotContainsString( 'genready-aiview__url', $html );
+	}
+
+	public function test_fix_cards_without_an_account_link_to_the_banner(): void {
+		$card = array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => 'Create a free account first. GenReady Pro and Agency generate this file.', 'account_link' => true, 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
+		$html = Page::view( 'fixes', array( 'connected' => false, 'cards' => array( $card ) ) );
+		$this->assertStringContainsString( 'Create a free account first. GenReady Pro and Agency generate this file.', $html );
+		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready#genready-account">Create my free account</a>', $html );
+		$this->assertMatchesRegularExpression( '/data-genready-action="preview" disabled/', $html );
+		$this->assertStringNotContainsString( 'Connect GenReady to preview a fix.', $html );
+	}
+
+	public function test_the_scan_form_escapes_the_suggestions(): void {
+		$html = Page::view( 'scan-form', array( 'home' => 'https://example.com/', 'suggestions' => array( 'https://example.com/a"><script>alert(1)</script>' ) ) );
+		$this->assert_safe( $html );
+		$this->assertStringContainsString( 'list="genready-pages"', $html );
+		$this->assertStringContainsString( 'novalidate', $html );
 	}
 }

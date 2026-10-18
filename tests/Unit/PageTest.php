@@ -11,10 +11,12 @@ use GenReady\Fixes\FixStore;
 use GenReady\Fixes\JsonLdFix;
 use GenReady\Fixes\LlmsTxtFix;
 use GenReady\Fixes\RobotsFix;
+use GenReady\Onboarding\AnonymousScans;
 use PHPUnit\Framework\TestCase;
 
 require_once dirname( __DIR__ ) . '/fixtures/doubles.php';
 require_once dirname( __DIR__ ) . '/fixtures/fix-doubles.php';
+require_once dirname( __DIR__ ) . '/fixtures/rest-doubles.php';
 
 class PageTest extends TestCase {
 	/** @var array */
@@ -27,6 +29,8 @@ class PageTest extends TestCase {
 	private $inline = array();
 	/** @var TokenStore */
 	private $store;
+	/** @var FakeClient */
+	private $client;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -43,6 +47,8 @@ class PageTest extends TestCase {
 		Monkey\Functions\when( 'get_option' )->alias( function ( $k, $d = false ) use ( &$opts ) { return $opts[ $k ] ?? $d; } );
 		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v ) use ( &$opts ) { $opts[ $k ] = $v; return true; } );
 		Monkey\Functions\when( 'get_transient' )->alias( function ( $k ) use ( &$trans ) { return $trans[ $k ] ?? false; } );
+		Monkey\Functions\when( 'delete_option' )->alias( function ( $k ) use ( &$opts ) { unset( $opts[ $k ] ); return true; } );
+		Monkey\Functions\when( 'set_transient' )->alias( function ( $k, $v ) use ( &$trans ) { $trans[ $k ] = $v; return true; } );
 		Monkey\Functions\when( 'delete_transient' )->alias( function ( $k ) use ( &$trans ) { unset( $trans[ $k ] ); return true; } );
 		Monkey\Functions\when( 'wp_enqueue_script' )->alias( function ( $h ) use ( &$scripts ) { $scripts[] = $h; } );
 		Monkey\Functions\when( 'wp_enqueue_style' )->alias( function ( $h ) use ( &$scripts ) { $scripts[] = 'style:' . $h; } );
@@ -55,7 +61,9 @@ class PageTest extends TestCase {
 		Monkey\Functions\when( 'get_current_user_id' )->justReturn( 7 );
 		Monkey\Functions\when( 'esc_html__' )->returnArg( 1 );
 		Monkey\Functions\when( 'esc_url' )->returnArg( 1 );
-		$this->store = new TokenStore();
+		Monkey\Functions\when( 'esc_url_raw' )->returnArg( 1 );
+		$this->store  = new TokenStore();
+		$this->client = new FakeClient();
 	}
 
 	protected function tearDown(): void {
@@ -64,18 +72,62 @@ class PageTest extends TestCase {
 		parent::tearDown();
 	}
 
+	private function scans(): AnonymousScans {
+		return new AnonymousScans( $this->store, $this->client );
+	}
+
 	private function page(): Page {
-		$client = new FakeClient();
 		$files  = new MemoryFiles();
 		$fixes  = new FixStore();
 		$caches = new RecordingCaches();
 		$seo    = new SeoPlugins( $files );
+		$scans  = $this->scans();
 		return new Page(
 			$this->store,
-			new Reports( $this->store, $client ),
-			new FixCards( $fixes, new RobotsFix( $fixes, $files, $client, $caches, 'd1' ), new LlmsTxtFix( $fixes, $files, $client, $caches, $seo, 'd1' ), new JsonLdFix( $fixes, $client, $caches, $seo, 'd1' ), $files )
+			new Reports( $this->store, $this->client, $scans ),
+			new FixCards(
+				$fixes,
+				new RobotsFix( $fixes, $files, $this->client, $caches, 'd1' ),
+				new LlmsTxtFix( $fixes, $files, $this->client, $caches, $seo, 'd1' ),
+				new JsonLdFix( $fixes, $this->client, $caches, $seo, 'd1' ),
+				$files,
+				function (): bool {
+					return null !== $this->store->load();
+				}
+			),
+			$scans
 		);
 	}
+
+	/** Stubs for render(): the escaping of ViewsTest and the WordPress data the views read. */
+	private function render( array $get = array() ): string {
+		$_GET   = $get;
+		$escape = function ( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); };
+		foreach ( array( 'esc_html', 'esc_attr', 'esc_textarea', 'esc_html__', 'esc_attr__' ) as $fn ) {
+			Monkey\Functions\when( $fn )->alias( $escape );
+		}
+		Monkey\Functions\when( 'esc_html_e' )->alias( function ( $s ) use ( $escape ) { echo $escape( $s ); } );
+		Monkey\Functions\when( 'esc_attr_e' )->alias( function ( $s ) use ( $escape ) { echo $escape( $s ); } );
+		Monkey\Functions\when( 'esc_url' )->alias( function ( $u ) { return 1 === preg_match( '#^https?://#', (string) $u ) ? htmlspecialchars( (string) $u, ENT_QUOTES ) : ''; } );
+		Monkey\Functions\when( 'esc_url_raw' )->returnArg( 1 );
+		Monkey\Functions\when( '__' )->returnArg( 1 );
+		Monkey\Functions\when( '_n' )->alias( function ( $one, $many, $n ) { return 1 === $n ? $one : $many; } );
+		Monkey\Functions\when( 'sanitize_key' )->alias( function ( $k ) { return strtolower( (string) preg_replace( '/[^a-z0-9_\-]/i', '', (string) $k ) ); } );
+		Monkey\Functions\when( 'wp_unslash' )->returnArg( 1 );
+		Monkey\Functions\when( 'home_url' )->alias( function ( $p = '' ) { return 'https://example.com' . $p; } );
+		Monkey\Functions\when( 'wp_parse_url' )->alias( function ( $u, $c = -1 ) { return parse_url( $u, $c ); } );
+		Monkey\Functions\when( 'get_posts' )->justReturn( array( 2 ) );
+		Monkey\Functions\when( 'get_permalink' )->justReturn( 'https://example.com/sample-page/' );
+		Monkey\Functions\when( 'wp_get_current_user' )->justReturn( (object) array( 'user_email' => 'admin@example.com' ) );
+		Monkey\Functions\when( 'is_email' )->alias( function ( $e ) { return false !== filter_var( $e, FILTER_VALIDATE_EMAIL ) ? $e : false; } );
+		Monkey\Functions\when( 'date_i18n' )->alias( function ( $f, $t ) { return gmdate( 'Y-m-d', $t ); } );
+		Monkey\Functions\when( 'wp_strip_all_tags' )->alias( 'strip_tags' );
+		$this->options['permalink_structure'] = '/%postname%/';
+		ob_start();
+		$this->page()->render();
+		return (string) ob_get_clean();
+	}
+
 
 	public function test_assets_load_only_on_the_genready_page(): void {
 		Monkey\Functions\when( 'get_user_meta' )->justReturn( '1' );
@@ -86,7 +138,7 @@ class PageTest extends TestCase {
 		$this->assertSame( array(), $this->scripts );
 
 		$page->enqueue( 'settings_page_genready' );
-		$this->assertSame( array( 'style:genready-admin', 'genready-admin' ), $this->scripts );
+		$this->assertSame( array( 'style:genready-admin', 'genready-admin', 'genready-onboarding' ), $this->scripts );
 		$this->assertStringStartsWith( 'window.genreadyAdmin = ', $this->inline['genready-admin'] );
 		$this->assertStringContainsString( '"connected":false', $this->inline['genready-admin'] );
 	}
@@ -106,7 +158,7 @@ class PageTest extends TestCase {
 		ob_start();
 		$page->plugins_notice();
 		$html = ob_get_clean();
-		$this->assertStringContainsString( 'Connect GenReady to see your AI readiness score.', $html );
+		$this->assertStringContainsString( 'See how AI search engines and agents read your site. No account needed.', $html );
 		$this->assertStringContainsString( 'is-dismissible', $html );
 
 		$page->enqueue( 'plugins.php' );
@@ -159,7 +211,7 @@ class PageTest extends TestCase {
 				return array();
 			}
 		};
-		$page   = new Page( $this->store, new Reports( $this->store, $client ), $cards );
+		$page   = new Page( $this->store, new Reports( $this->store, $client ), $cards, new AnonymousScans( $this->store, $client ) );
 		$page->register();
 		$this->assertSame( array( $page, 'prepare' ), $hooks['load-settings_page_genready'] );
 
@@ -177,5 +229,108 @@ class PageTest extends TestCase {
 		$html = (string) ob_get_clean();
 		$this->assertSame( 1, $cards->built, 'render reuses the cards built on the load hook' );
 		$this->assertStringContainsString( 'genready-fixes', $html );
+	}
+
+	const SCAN1 = '11111111-1111-4111-8111-111111111111';
+	const SCAN2 = '22222222-2222-4222-8222-222222222222';
+	const TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ';
+
+	public function test_the_first_screen_without_a_connection_or_a_scan_makes_no_call(): void {
+		Monkey\Functions\expect( 'wp_remote_request' )->never();
+		$html = $this->render();
+		$this->assertStringContainsString( '<h2 id="genready-start-title">See how AI search engines and agents read your site</h2>', $html );
+		$this->assertStringContainsString( '<label for="genready-page-url">Page address</label>', $html );
+		$this->assertStringContainsString( 'type="url" id="genready-page-url"', $html );
+		$this->assertStringContainsString( 'value="https://example.com/"', $html );
+		$this->assertStringContainsString( '<option value="https://example.com/sample-page/"></option>', $html );
+		$this->assertStringContainsString( 'Check this page', $html );
+		$this->assertStringContainsString( 'Sends your site address to genready.ai. No account needed.', $html );
+		$this->assertStringContainsString( 'https://genready.ai/terms', $html );
+		$this->assertStringContainsString( 'Already have a GenReady account? Connect', $html );
+		$this->assertStringContainsString( '<div id="genready-connect-panel" hidden>', $html );
+		$this->assertStringContainsString( 'Connect to GenReady', $html );
+		$this->assertStringNotContainsString( 'genready-account-form', $html );
+		$this->assertSame( array(), $this->client->publics );
+	}
+
+	public function test_a_stored_scan_shows_the_banner_the_scan_form_and_the_report(): void {
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->client->public_result = report_fixture( array( 'reportId' => self::SCAN1 ) );
+		$html                        = $this->render();
+		$this->assertStringContainsString( 'id="genready-account"', $html );
+		$this->assertStringContainsString( 'Save your site and track your score', $html );
+		$this->assertStringContainsString( '<label for="genready-account-email">Email</label>', $html );
+		$this->assertStringContainsString( 'type="email" id="genready-account-email" class="regular-text" value="admin@example.com"', $html );
+		$this->assertStringContainsString( 'Create my free account', $html );
+		$this->assertStringContainsString( 'Creates a GenReady account for this email and adds this site to it. GenReady emails you a link to set your password.', $html );
+		$this->assertStringContainsString( 'Check this page', $html );
+		$this->assertStringNotContainsString( 'Recent scans', $html, 'only with 2 or more scans' );
+		$this->assertStringContainsString( 'How AI sees your homepage', $html );
+		$this->assertSame( self::TOKEN, $this->client->publics[0][3] );
+	}
+
+	public function test_the_recent_list_marks_the_open_scan(): void {
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->scans()->remember( self::SCAN2, 'https://example.com/pricing/', self::TOKEN );
+		$this->client->public_result = report_fixture( array( 'reportId' => self::SCAN1 ) );
+		$html                        = $this->render( array( 'scan' => self::SCAN1 ) );
+		$this->assertStringContainsString( 'Recent scans', $html );
+		$this->assertStringContainsString( '<span aria-current="true">Home page</span>', $html );
+		$this->assertStringContainsString( 'options-general.php?page=genready&amp;scan=' . self::SCAN2 . '">/pricing/</a>', $html );
+		$this->assertSame( '/api/v1/wp/scans/' . self::SCAN1, $this->client->publics[0][1] );
+	}
+
+	public function test_connect_only_while_the_onboarding_is_paused(): void {
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->transients['genready_anon_off'] = 1;
+		$html                                  = $this->render();
+		$this->assertStringContainsString( 'GenReady paused scans without an account. Connect with a GenReady account.', $html );
+		$this->assertStringContainsString( 'Connect to GenReady', $html );
+		$this->assertStringContainsString( 'id="genready-account"', $html, 'the fix card link still has a target' );
+		$this->assertStringNotContainsString( 'Check this page', $html );
+		$this->assertStringNotContainsString( 'genready-account-form', $html );
+		$this->assertSame( array(), $this->client->publics );
+	}
+
+	// Review Focus 3.
+	public function test_overview_shows_the_first_screen_after_the_salts_change(): void {
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		Monkey\Functions\when( 'wp_salt' )->justReturn( str_repeat( 'x', 64 ) );
+		$html = $this->render();
+		$this->assertStringContainsString( 'See how AI search engines and agents read your site', $html );
+		$this->assertSame( array(), $this->client->publics );
+	}
+
+	public function test_the_account_notice_shows_two_lines_and_skips_the_setup(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$this->transients['genready_notice_7'] = array( 'ok' => true, 'account' => true, 'email' => 'owner@example.com' );
+		$page                                  = $this->page();
+		Monkey\Functions\when( 'get_user_meta' )->justReturn( '1' );
+		$page->enqueue( 'settings_page_genready' );
+		$this->assertStringContainsString( '"justConnected":false', $this->inline['genready-admin'] );
+		$this->transients['genready_notice_7'] = array( 'ok' => true, 'account' => true, 'email' => 'owner@example.com' );
+		$html                                  = $this->render();
+		$this->assertStringContainsString( 'Your free GenReady account is ready. This site is connected and verified.', $html );
+		$this->assertStringContainsString( 'GenReady sent a link to owner@example.com. Use it to set your password.', $html );
+		$this->assertStringNotContainsString( 'GenReady is connected.', $html );
+	}
+
+	public function test_the_onboarding_script_loads_only_without_a_connection(): void {
+		Monkey\Functions\when( 'get_user_meta' )->justReturn( '1' );
+		$this->page()->enqueue( 'settings_page_genready' );
+		$this->assertContains( 'genready-onboarding', $this->scripts );
+		$this->scripts = array();
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$this->page()->enqueue( 'settings_page_genready' );
+		$this->assertNotContains( 'genready-onboarding', $this->scripts );
+	}
+
+	public function test_plugins_notice_hides_after_a_stored_scan(): void {
+		Monkey\Functions\when( 'get_user_meta' )->justReturn( '' );
+		Monkey\Functions\when( 'get_current_screen' )->justReturn( (object) array( 'id' => 'plugins' ) );
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		ob_start();
+		$this->page()->plugins_notice();
+		$this->assertSame( '', ob_get_clean() );
 	}
 }

@@ -55,22 +55,30 @@ class FixCards {
 	 * @var FileWriter
 	 */
 	private $files;
+	/**
+	 * Tells whether the site is connected. Null means connected.
+	 *
+	 * @var callable|null
+	 */
+	private $connected;
 
 	/**
 	 * Build the cards.
 	 *
-	 * @param FixStore   $store  Fix storage.
-	 * @param RobotsFix  $robots The robots.txt fix.
-	 * @param LlmsTxtFix $llms   The llms.txt fix.
-	 * @param JsonLdFix  $jsonld The JSON-LD fix.
-	 * @param FileWriter $files  Files in the site root, to tell whether WordPress can write them.
+	 * @param FixStore      $store     Fix storage.
+	 * @param RobotsFix     $robots    The robots.txt fix.
+	 * @param LlmsTxtFix    $llms      The llms.txt fix.
+	 * @param JsonLdFix     $jsonld    The JSON-LD fix.
+	 * @param FileWriter    $files     Files in the site root, to tell whether WordPress can write them.
+	 * @param callable|null $connected Returns true when the site is connected. Null means connected.
 	 */
-	public function __construct( FixStore $store, RobotsFix $robots, LlmsTxtFix $llms, JsonLdFix $jsonld, FileWriter $files ) {
-		$this->store  = $store;
-		$this->robots = $robots;
-		$this->llms   = $llms;
-		$this->jsonld = $jsonld;
-		$this->files  = $files;
+	public function __construct( FixStore $store, RobotsFix $robots, LlmsTxtFix $llms, JsonLdFix $jsonld, FileWriter $files, ?callable $connected = null ) {
+		$this->store     = $store;
+		$this->robots    = $robots;
+		$this->llms      = $llms;
+		$this->jsonld    = $jsonld;
+		$this->files     = $files;
+		$this->connected = $connected;
 	}
 
 	/**
@@ -147,12 +155,43 @@ class FixCards {
 	 * @param array  $jsonld_target Target of the JSON-LD fix.
 	 * @return array kind, title, state, state_text, message, blocked, applied, versions, live, live_check, mode,
 	 *               tagline, can_write (false in file mode when WordPress cannot write the file) and as_file
-	 *               (true when this request may write llms.txt as a physical file).
+	 *               (true when this request may write llms.txt as a physical file). Without a connection
+	 *               also account_link (true).
 	 */
 	public function card( string $kind, array $jsonld_target = array() ): array {
-		if ( 'jsonld' === $kind ) {
-			return $this->jsonld_card( $jsonld_target );
+		$card = 'jsonld' === $kind ? $this->jsonld_card( $jsonld_target ) : $this->file_card( $kind );
+		return $this->is_connected() ? $card : self::without_account( $card );
+	}
+
+	/**
+	 * A card as it shows without a connection (spec 4.5). The REST answer
+	 * after Undo uses it too, so the script keeps the same text.
+	 *
+	 * @param array $card A card.
+	 */
+	public static function without_account( array $card ): array {
+		$message = __( 'Create a free account first. GenReady Pro and Agency generate this file.', 'genready' );
+		if ( ! empty( $card['applied'] ) ) {
+			$message .= ' ' . __( 'Undo works without a connection.', 'genready' );
 		}
+		$card['message']      = $message;
+		$card['account_link'] = true;
+		return $card;
+	}
+
+	/**
+	 * Whether the site is connected.
+	 */
+	private function is_connected(): bool {
+		return null === $this->connected || true === call_user_func( $this->connected );
+	}
+
+	/**
+	 * The robots.txt or llms.txt card. The robots.txt card runs do_robots().
+	 *
+	 * @param string $kind 'robots' or 'llms'.
+	 */
+	private function file_card( string $kind ): array {
 		$fix      = 'robots' === $kind ? $this->robots : $this->llms;
 		$mode     = $fix->mode();
 		$refusal  = 'robots' === $kind ? $this->robots->mode_refusal( $mode ) : $this->llms->refusal( $mode );

@@ -121,10 +121,19 @@ final class Plugin {
 
 		// The admin page and its REST routes. Building them makes no call and reads no option.
 		$reports = new Reports( $this->store, $client, $this->scans );
-		$cards   = new FixCards( $fixes, $robots, $llms, $jsonld, $files );
+		$cards   = new FixCards(
+			$fixes,
+			$robots,
+			$llms,
+			$jsonld,
+			$files,
+			function (): bool {
+				return null !== $this->store->load();
+			}
+		);
 		$rest    = new Rest( $this->store, $client, $this->oauth, $api_key, $site_setup, $meta_tag, $caches, $reports, $cards, $this->scans, $account );
 		add_action( 'rest_api_init', array( $rest, 'register' ) );
-		( new Page( $this->store, $reports, $cards ) )->register();
+		( new Page( $this->store, $reports, $cards, $this->scans ) )->register();
 	}
 
 	/**
