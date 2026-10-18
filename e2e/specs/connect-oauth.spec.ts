@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { VERIFY_SHOWN, account, helper, login, openGenReady } from '../lib/helpers';
+import { VERIFY_SHOWN, account, helper, login, openConnectForm, openGenReady } from '../lib/helpers';
 
 test('connect with OAuth: sign in, approve, back on the plugin page connected', async ({ page }) => {
 	await login(page);
 	await openGenReady(page);
+	await openConnectForm(page);
 	// The admin email goes to GenReady only when the admin ticks the box.
 	await expect(page.locator('#genready-send-email')).not.toBeChecked();
 	const authorize = page.waitForRequest(/^http:\/\/127\.0\.0\.1:5002\/oauth\/authorize/);

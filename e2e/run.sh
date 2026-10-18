@@ -10,10 +10,12 @@
 #   GENREADY_E2E_SEO           yoast | rankmath | aioseo | none (passed to the specs, default none)
 #   GENREADY_E2E_SITE_URL      WordPress site URL when it is not http://127.0.0.1:9411 (multisite needs one
 #                              without a port; the multisite spec maps it back to 9411 in the browser)
+#   GENREADY_E2E_WORKERS       Playground PHP workers (default 1; the account spec needs 2, spec 7.5)
+#   GENREADY_E2E_MIN_MB        free memory that the host check needs (default 1200)
 #
 # Host safety: the script refuses to start while a GenReady deploy runs or when the host has
-# 1200 MB or less available memory (it waits up to 10 minutes). It runs one Playground with
-# one worker on 127.0.0.1:9411 and stops it on exit.
+# 1200 MB or less available memory (it waits up to 10 minutes). It runs one Playground (1 worker
+# unless GENREADY_E2E_WORKERS says otherwise) on 127.0.0.1:9411 and stops it on exit.
 set -euo pipefail
 
 E2E_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -44,7 +46,7 @@ fs.writeFileSync(dst, JSON.stringify(blueprint, null, "\t"));
 wait_for_host
 
 setsid npx -y @wp-playground/cli@3.1.57 server \
-	--port="$PORT" --php="$PHP_VERSION" --wp=latest --workers=1 \
+	--port="$PORT" --php="$PHP_VERSION" --wp=latest --workers="${GENREADY_E2E_WORKERS:-1}" \
 	${GENREADY_E2E_SITE_URL:+--site-url="$GENREADY_E2E_SITE_URL"} \
 	--mount="$PLUGIN_DIR:$MOUNT_AT" \
 	--mount="$E2E_DIR/mu-plugins:/wordpress/wp-content/mu-plugins" \
