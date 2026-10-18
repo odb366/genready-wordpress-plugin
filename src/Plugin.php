@@ -194,7 +194,7 @@ final class Plugin {
 		}
 		wp_add_privacy_policy_content(
 			'GenReady',
-			wp_kses_post( wpautop( __( 'The GenReady plugin does not collect data about visitors to this site and sets no cookies. Site administrators who connect the plugin send site data to genready.ai, as the plugin readme describes.', 'genready' ) ) )
+			wp_kses_post( wpautop( __( 'The GenReady plugin does not collect data about visitors to this site and sets no cookies. Site administrators who use the plugin send site data to genready.ai, as the plugin readme describes.', 'genready' ) ) )
 		);
 	}
 

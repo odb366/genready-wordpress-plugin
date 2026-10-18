@@ -133,6 +133,7 @@ class PluginTest extends TestCase {
 		$this->assertSame( 'GenReady', $given[0] );
 		$this->assertStringContainsString( 'genready.ai', $given[1] );
 		$this->assertStringContainsString( 'no cookies', $given[1] );
+		$this->assertStringContainsString( 'Site administrators who use the plugin send site data to genready.ai, as the plugin readme describes.', $given[1] );
 	}
 
 	public function test_boot_registers_the_privacy_text_on_admin_init(): void {
