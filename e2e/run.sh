@@ -51,16 +51,15 @@ fs.writeFileSync(dst, JSON.stringify(blueprint, null, "\t"));
 . "$E2E_DIR/lib/host-check.sh"
 wait_for_host
 
-setsid npx -y @wp-playground/cli@3.1.57 server \
-	--port="$PORT" --php="$PHP_VERSION" --wp=latest --workers="${GENREADY_E2E_WORKERS:-1}" \
-	${GENREADY_E2E_SITE_URL:+--site-url="$GENREADY_E2E_SITE_URL"} \
-	--mount="$PLUGIN_DIR:$MOUNT_AT" \
-	--mount="$E2E_DIR/mu-plugins:/wordpress/wp-content/mu-plugins" \
-	--blueprint="$EFFECTIVE" >"$LOG" 2>&1 &
-PG=$!
+PG=
+PW=
+WATCH=
+MIN_FILE="$LOG_DIR/memory-min-$$.txt"
+ABORT_FILE="$LOG_DIR/memory-abort-$$.txt"
+rm -f "$ABORT_FILE" "$ABORT_FILE.pw"
 
 stop_playground() {
-	kill -TERM -- "-$PG" 2>/dev/null || true
+	if [ -n "$PG" ]; then kill -TERM -- "-$PG" 2>/dev/null || true; fi
 	for _ in $(seq 1 20); do
 		[ -n "$(playground_pids)" ] || break
 		sleep 0.5
@@ -75,18 +74,61 @@ kill_tree() {
 	kill -TERM "$1" 2>/dev/null || true
 }
 
+# True when the PID still runs a command whose line contains the pattern (guards against PID reuse).
+runs() {
+	ps -o args= -p "$1" 2>/dev/null | grep -q -- "$2"
+}
+
+# True while the script runs (kill -0 also succeeds for a zombie, so a Z state counts as gone).
+script_alive() {
+	kill -0 "$1" 2>/dev/null && [ "$(ps -o stat= -p "$1" 2>/dev/null | cut -c1)" != Z ]
+}
+
 available_mb() {
 	free -m | awk 'NR==2 {print $7}'
 }
 
+on_exit() {
+	local status=$?
+	if [ -n "$WATCH" ]; then
+		kill "$WATCH" 2>/dev/null || true
+		wait "$WATCH" 2>/dev/null || true
+	fi
+	if [ -n "$PW" ]; then kill_tree "$PW"; fi
+	stop_playground
+	if [ -f "$MIN_FILE" ]; then
+		echo "host memory: the lowest available memory during the run was $(cat "$MIN_FILE") MB"
+	fi
+	rm -f "$MIN_FILE" "$ABORT_FILE.pw"
+	if [ -f "$ABORT_FILE" ]; then
+		echo "ABORTED: host memory below $ABORT_MB MB ($(cat "$ABORT_FILE") MB available)" >&2
+		rm -f "$ABORT_FILE"
+		exit 6
+	fi
+	exit "$status"
+}
+
+setsid npx -y @wp-playground/cli@3.1.57 server \
+	--port="$PORT" --php="$PHP_VERSION" --wp=latest --workers="${GENREADY_E2E_WORKERS:-1}" \
+	${GENREADY_E2E_SITE_URL:+--site-url="$GENREADY_E2E_SITE_URL"} \
+	--mount="$PLUGIN_DIR:$MOUNT_AT" \
+	--mount="$E2E_DIR/mu-plugins:/wordpress/wp-content/mu-plugins" \
+	--blueprint="$EFFECTIVE" >"$LOG" 2>&1 &
+PG=$!
+trap on_exit EXIT
+
 # Memory watchdog: records the lowest available memory, and stops Playground and the tests below ABORT_MB.
-MIN_FILE="$LOG_DIR/memory-min-$$.txt"
-ABORT_FILE="$LOG_DIR/memory-abort-$$.txt"
-rm -f "$ABORT_FILE"
+# It also ends when the script is gone (for example after a SIGKILL, when on_exit cannot run).
 available_mb >"$MIN_FILE"
-PW=
 (
 	while :; do
+		if ! script_alive "$$"; then
+			# The script died without its clean-up: stop what it started, if those PIDs still run it.
+			if runs "$PG" wp-playground; then kill -TERM -- "-$PG" 2>/dev/null || true; fi
+			if [ -f "$ABORT_FILE.pw" ] && runs "$(cat "$ABORT_FILE.pw")" playwright; then kill_tree "$(cat "$ABORT_FILE.pw")"; fi
+			rm -f "$MIN_FILE" "$ABORT_FILE" "$ABORT_FILE.pw"
+			exit 0
+		fi
 		avail=$(available_mb)
 		if [ "$avail" -lt "$(cat "$MIN_FILE")" ]; then echo "$avail" >"$MIN_FILE"; fi
 		if [ "$avail" -lt "$ABORT_MB" ] && [ ! -f "$ABORT_FILE" ]; then echo "$avail" >"$ABORT_FILE"; fi
@@ -101,23 +143,6 @@ PW=
 	done
 ) &
 WATCH=$!
-
-on_exit() {
-	local status=$?
-	kill "$WATCH" 2>/dev/null || true
-	wait "$WATCH" 2>/dev/null || true
-	if [ -n "$PW" ]; then kill_tree "$PW"; fi
-	stop_playground
-	echo "host memory: the lowest available memory during the run was $(cat "$MIN_FILE") MB"
-	rm -f "$MIN_FILE" "$ABORT_FILE.pw"
-	if [ -f "$ABORT_FILE" ]; then
-		echo "ABORTED: host memory below $ABORT_MB MB ($(cat "$ABORT_FILE") MB available)" >&2
-		rm -f "$ABORT_FILE"
-		exit 6
-	fi
-	exit "$status"
-}
-trap on_exit EXIT
 
 ready=0
 for _ in $(seq 1 120); do
@@ -143,10 +168,18 @@ case "$powered" in
 esac
 
 cd "$E2E_DIR"
+# One check here too, so the tests never start below the limit (the watchdog samples only every 3 s).
+avail_now=$(available_mb)
+if [ ! -f "$ABORT_FILE" ] && [ "$avail_now" -lt "$ABORT_MB" ]; then echo "$avail_now" >"$ABORT_FILE"; fi
 [ ! -f "$ABORT_FILE" ] || exit 6
 # In the background, so the watchdog can stop it (kill_tree) while the script waits.
 GENREADY_E2E_SEO=${GENREADY_E2E_SEO:-none} GENREADY_E2E_PHP="$PHP_VERSION" \
 	npx playwright test "$@" &
 PW=$!
 echo "$PW" >"$ABORT_FILE.pw"
-wait "$PW"
+status=0
+wait "$PW" || status=$?
+# The runner is reaped: on_exit and the watchdog must not signal its PID again.
+rm -f "$ABORT_FILE.pw"
+PW=
+exit "$status"
