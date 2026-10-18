@@ -169,4 +169,13 @@ class SiteSetupTest extends TestCase {
 		$this->assertNull( $this->store->load() );
 		$this->assertCount( 1, $this->client->requests );
 	}
+
+	public function test_scan_uses_a_page_on_this_site_and_falls_back_to_the_home_page(): void {
+		$this->connect();
+		$this->client->request_result = array( 'reportId' => '11111111-2222-3333-4444-555555555555' );
+		$this->setup_object()->scan( 'https://example.com/pricing/' );
+		$this->setup_object()->scan( 'https://evil.test/' );
+		$this->assertSame( 'https://example.com/pricing/', $this->client->requests[0][2]['url'] );
+		$this->assertSame( 'https://example.com/', $this->client->requests[1][2]['url'] );
+	}
 }

@@ -4,7 +4,11 @@ namespace GenReady\Tests\Unit;
 use Brain\Monkey;
 use PHPUnit\Framework\TestCase;
 
+require_once dirname( __DIR__ ) . '/fixtures/http-doubles.php';
+
 class PluginTest extends TestCase {
+	use ScriptedHttp;
+
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
@@ -179,5 +183,30 @@ class PluginTest extends TestCase {
 		$plugin  = $this->booted_with_options( $options );
 		( new \GenReady\Connection\TokenStore() )->save( array( 'method' => 'oauth', 'access_token' => 'A', 'refresh_token' => 'R', 'domain_id' => 'd1' ) );
 		$this->assertInstanceOf( \WP_REST_Response::class, $plugin->serve_client_document() );
+	}
+
+	public function test_oauth_callback_success_clears_the_anonymous_scans(): void {
+		$options = array( 'genready_anonymous_scans' => array( array( 'id' => 'x' ) ) );
+		$plugin  = $this->booted_with_options( $options );
+		Monkey\Functions\when( 'delete_option' )->alias( function ( $k ) use ( &$options ) { unset( $options[ $k ] ); return true; } );
+		Monkey\Functions\when( 'get_transient' )->justReturn( array( 'state' => 'st', 'verifier' => 'v' ) );
+		Monkey\Functions\when( 'delete_transient' )->justReturn( true );
+		Monkey\Functions\when( 'set_transient' )->justReturn( true );
+		Monkey\Functions\when( 'sanitize_text_field' )->returnArg( 1 );
+		Monkey\Functions\when( 'wp_unslash' )->returnArg( 1 );
+		Monkey\Functions\when( 'current_user_can' )->justReturn( true );
+		Monkey\Functions\when( 'get_current_user_id' )->justReturn( 7 );
+		Monkey\Functions\when( 'wp_parse_url' )->alias( function ( $u, $c = -1 ) { return parse_url( $u, $c ); } );
+		Monkey\Functions\when( 'wp_safe_redirect' )->justReturn( true );
+		$this->scripted_http(
+			array(
+				array( 200, array( 'access_token' => 'AT', 'refresh_token' => 'RT', 'expires_in' => 3600, 'domain_id' => 'd1' ) ),
+				array( 200, array( 'data' => array( 'domain' => array( 'id' => 'd1', 'verificationToken' => 'tok12345678' ) ), 'meta' => array() ) ),
+			)
+		);
+		$_GET = array( 'page' => 'genready', 'genready_cb' => '1', 'state' => 'st', 'code' => 'c' );
+		$plugin->maybe_handle_oauth_callback();
+		$this->assertArrayHasKey( 'genready_connection', $options );
+		$this->assertArrayNotHasKey( 'genready_anonymous_scans', $options );
 	}
 }
