@@ -119,13 +119,11 @@ class ProofTest extends TestCase {
 	public function test_the_route_is_public_get_only_with_a_strict_id(): void {
 		$routes = array();
 		Monkey\Functions\when( 'register_rest_route' )->alias( function ( $ns, $path, $args ) use ( &$routes ) { $routes[ $ns . $path ] = $args; } );
-		( new Proof() )->register();
+		$proof = new Proof();
+		$proof->register();
 		$args = $routes['genready/v1/proof/(?P<id>[a-f0-9]{32})'];
 		$this->assertSame( 'GET', $args['methods'] );
 		$this->assertSame( '__return_true', $args['permission_callback'] );
-		$pattern = '#^/proof/(?P<id>[a-f0-9]{32})$#';
-		$this->assertSame( 1, preg_match( $pattern, '/proof/' . str_repeat( 'a', 32 ) ) );
-		$this->assertSame( 0, preg_match( $pattern, '/proof/' . str_repeat( 'a', 31 ) ) );
-		$this->assertSame( 0, preg_match( $pattern, '/proof/' . str_repeat( 'G', 32 ) ) );
+		$this->assertSame( array( $proof, 'serve' ), $args['callback'] );
 	}
 }
