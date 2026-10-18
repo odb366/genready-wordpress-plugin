@@ -92,7 +92,7 @@ final class AnonymousScans {
 			return self::refusal( __( 'GenReady could not do this. Try again.', 'genready' ), 'BAD_RESPONSE', null );
 		}
 		$this->remember( $id, $page_url, $token );
-		return array( 'scan_id' => $id );
+		return array( 'scan_id' => strtolower( $id ) );
 	}
 
 	/**
@@ -149,7 +149,7 @@ final class AnonymousScans {
 	}
 
 	/**
-	 * Store a scan at the top of the list. A malformed ID or token is ignored.
+	 * Store a scan at the top of the list, with the ID in lower case. A malformed ID or token is ignored.
 	 *
 	 * @param string $scan_id  Scan ID.
 	 * @param string $page_url Page address.
@@ -159,6 +159,7 @@ final class AnonymousScans {
 		if ( 1 !== preg_match( self::UUID, $scan_id ) || 1 !== preg_match( self::TOKEN, $token ) ) {
 			return;
 		}
+		$scan_id = strtolower( $scan_id );
 		$this->entries(); // Drops expired and broken entries first.
 		$stored = get_option( self::OPTION );
 		$list   = array(

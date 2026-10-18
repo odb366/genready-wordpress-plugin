@@ -3,8 +3,10 @@ namespace GenReady\Tests\Unit;
 
 use Brain\Monkey;
 use GenReady\Admin\FixCards;
+use GenReady\Admin\Rest;
 use GenReady\Api\ApiError;
 use GenReady\Onboarding\AnonymousScans;
+use GenReady\Onboarding\PageUrl;
 
 require_once __DIR__ . '/RestTestCase.php';
 
@@ -14,6 +16,101 @@ class RestOnboardingTest extends RestTestCase {
 	const SCAN  = '66666666-6666-4666-8666-666666666666';
 	const SCAN2 = '77777777-7777-4777-8777-777777777777';
 	const TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ';
+	const HEX1  = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+	const HEX2  = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+	/** The registered routes, by path. */
+	private function routes(): array {
+		$routes = array();
+		Monkey\Functions\when( 'register_rest_route' )->alias( function ( $ns, $path, $args ) use ( &$routes ) { $routes[ $path ] = $args; } );
+		$this->rest()->register();
+		return $routes;
+	}
+
+	/** esc_url_raw() as WordPress: an address with a scheme outside $protocols becomes ''; a relative one stays. */
+	private function protocol_aware_esc_url_raw(): void {
+		Monkey\Functions\when( 'esc_url_raw' )->alias(
+			function ( $url, $protocols = null ) {
+				$scheme = parse_url( (string) $url, PHP_URL_SCHEME );
+				if ( ! is_string( $scheme ) ) {
+					return (string) $url;
+				}
+				return null === $protocols || in_array( strtolower( $scheme ), $protocols, true ) ? (string) $url : '';
+			}
+		);
+	}
+
+	/** POST /scan as WordPress runs it: validate_callback on the raw value, then sanitize_callback, then the handler. */
+	private function scan_through_the_route( string $raw ) {
+		$this->protocol_aware_esc_url_raw();
+		$arg = $this->routes()['/scan']['args']['url'];
+		$this->assertTrue( call_user_func( $arg['validate_callback'], $raw ) );
+		$url = call_user_func( $arg['sanitize_callback'], $raw );
+		return $this->rest()->scan( new FakeRequest( array( 'url' => $url ) ) );
+	}
+
+	public function test_scan_of_an_address_that_is_not_http_is_refused_without_a_call(): void {
+		foreach ( array( 'ftp://example.com/', 'javascript:alert(1)', 'mailto:owner@example.com' ) as $raw ) {
+			$result = $this->scan_through_the_route( $raw );
+			$this->assert_error( $result, 'Enter an address on this site.' );
+			$this->assertSame( 'NOT_THIS_SITE', $result->get_error_data()['genready_code'], $raw );
+		}
+		$this->assertSame( array(), $this->client->publics );
+		$this->connect();
+		foreach ( array( 'ftp://example.com/', 'javascript:alert(1)' ) as $raw ) {
+			$result = $this->scan_through_the_route( $raw );
+			$this->assert_error( $result, 'Enter an address on this site.' );
+			$this->assertSame( 'NOT_THIS_SITE', $result->get_error_data()['genready_code'], $raw );
+		}
+		$this->assertSame( array(), $this->client->requests );
+	}
+
+	public function test_scan_through_the_route_keeps_an_empty_value_as_the_home_page(): void {
+		$this->client->public_result = array( 'scanId' => self::SCAN, 'scanToken' => self::TOKEN );
+		$this->assertSame( array( 'scan_id' => self::SCAN ), $this->scan_through_the_route( '' ) );
+		$this->assertSame( 'https://example.com/', $this->client->publics[0][2]['pageUrl'] );
+		$this->scan_through_the_route( ' https://example.com/pricing/ ' );
+		$this->assertSame( 'https://example.com/pricing/', $this->client->publics[1][2]['pageUrl'] );
+	}
+
+	// PHP M3: the argument pipeline of the 3 onboarding routes.
+	public function test_the_onboarding_routes_need_manage_options_and_check_their_arguments(): void {
+		$routes = $this->routes();
+		foreach ( array( '/scan', '/report', '/account' ) as $path ) {
+			$this->assertSame( array( Rest::class, 'permission' ), $routes[ $path ]['permission_callback'], $path );
+		}
+		$this->protocol_aware_esc_url_raw();
+		$sanitize = $routes['/scan']['args']['url']['sanitize_callback'];
+		$this->assertSame( 'https://example.com/a/', call_user_func( $sanitize, ' https://example.com/a/ ' ) );
+		$this->assertSame( '', call_user_func( $sanitize, '' ) );
+		$this->assertSame( '', call_user_func( $sanitize, array() ) );
+		foreach ( array( 'javascript:alert(1)', 'ftp://example.com/' ) as $raw ) {
+			$clean = call_user_func( $sanitize, $raw );
+			$this->assertNotSame( '', $clean, 'not the home page' );
+			$this->assertFalse( PageUrl::is_on_site( $clean ), $raw );
+			$this->assertStringNotContainsString( 'javascript', $clean );
+		}
+		$email = $routes['/account']['args']['email'];
+		$this->assertTrue( $email['required'] );
+		$this->assertSame( 'sanitize_text_field', $email['sanitize_callback'] );
+		$this->assertTrue( call_user_func( $email['validate_callback'], 'owner@example.com' ) );
+		$this->assertTrue( call_user_func( $email['validate_callback'], str_repeat( 'a', 320 ) ) );
+		$this->assertFalse( call_user_func( $email['validate_callback'], str_repeat( 'a', 321 ) ) );
+		$this->assertFalse( call_user_func( $email['validate_callback'], array( 'owner@example.com' ) ) );
+		$this->assertTrue( call_user_func( $routes['/report']['args']['scan']['validate_callback'], strtoupper( self::HEX1 ) ) );
+	}
+
+	// PHP L2: Page::requested_scan() lowercases, so the list and the route use lower case too.
+	public function test_scan_ids_are_lower_case_everywhere(): void {
+		$this->client->public_result = array( 'scanId' => strtoupper( self::HEX1 ), 'scanToken' => self::TOKEN );
+		$this->assertSame( array( 'scan_id' => self::HEX1 ), $this->rest()->scan( new FakeRequest() ) );
+		$this->scans()->remember( self::HEX2, 'https://example.com/a/', self::TOKEN );
+		$this->assertSame( array( self::HEX2, self::HEX1 ), array_column( $this->scans()->all(), 'id' ) );
+		$this->client->public_result = array( 'reportId' => self::HEX1, 'status' => 'analyzing' );
+		$result                      = $this->rest()->report( new FakeRequest( array( 'scan' => strtoupper( self::HEX1 ) ) ) );
+		$this->assertSame( array( 'state' => 'pending', 'scan_id' => self::HEX1 ), $result, 'the older scan, not the newest' );
+		$this->assertSame( '/api/v1/wp/scans/' . self::HEX1, $this->client->publics[1][1] );
+	}
 
 	public function test_scan_without_a_connection_starts_an_anonymous_scan(): void {
 		$this->client->public_result = array( 'scanId' => self::SCAN, 'scanToken' => self::TOKEN );

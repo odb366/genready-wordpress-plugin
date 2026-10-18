@@ -21,23 +21,26 @@ final class PageUrl {
 	const SUGGESTIONS = 50;
 
 	/**
-	 * Tell whether an address is an http or https page on this site's host.
+	 * Tell whether an address is an http or https page on this site's host and port.
+	 * A user part or a backslash is refused: PHP and the WHATWG URL parser of
+	 * the server read such an address as different hosts.
 	 *
 	 * @param string $url Page address.
 	 */
 	public static function is_on_site( string $url ): bool {
-		if ( '' === $url || strlen( $url ) > self::MAX_LENGTH ) {
+		if ( '' === $url || strlen( $url ) > self::MAX_LENGTH || false !== strpos( $url, '\\' ) ) {
 			return false;
 		}
 		$parts = wp_parse_url( $url );
-		if ( ! is_array( $parts ) || ! isset( $parts['scheme'], $parts['host'] ) ) {
+		if ( ! is_array( $parts ) || ! isset( $parts['scheme'], $parts['host'] ) || isset( $parts['user'] ) || isset( $parts['pass'] ) ) {
 			return false;
 		}
 		if ( ! in_array( strtolower( $parts['scheme'] ), array( 'http', 'https' ), true ) ) {
 			return false;
 		}
-		$home = wp_parse_url( home_url(), PHP_URL_HOST );
-		return is_string( $home ) && self::host( $parts['host'] ) === self::host( $home );
+		$home = wp_parse_url( home_url() );
+		return is_array( $home ) && is_string( $home['host'] ?? null ) && self::host( $parts['host'] ) === self::host( $home['host'] )
+			&& ( $parts['port'] ?? null ) === ( $home['port'] ?? null );
 	}
 
 	/**

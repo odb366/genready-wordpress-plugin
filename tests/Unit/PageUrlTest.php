@@ -43,6 +43,16 @@ class PageUrlTest extends TestCase {
 		}
 	}
 
+	public function test_refuses_another_port_a_user_part_and_a_backslash(): void {
+		foreach ( array( 'https://example.com:2083/', 'https://example.com:443/', 'https://user@example.com/', 'https://user:pass@example.com/', 'https://evil.test\\@example.com/', 'https://example.com\\pricing' ) as $url ) {
+			$this->assertFalse( PageUrl::is_on_site( $url ), $url );
+		}
+		$this->home = 'http://localhost:8080';
+		$this->assertTrue( PageUrl::is_on_site( 'http://localhost:8080/sample-page/' ) );
+		$this->assertFalse( PageUrl::is_on_site( 'http://localhost/sample-page/' ) );
+		$this->assertFalse( PageUrl::is_on_site( 'http://localhost:2083/' ) );
+	}
+
 	// Review Focus 5.
 	public function test_home_test_ignores_scheme_www_case_slash_query_and_fragment(): void {
 		foreach ( array( 'https://example.com/', 'https://example.com', 'http://www.EXAMPLE.com/', 'https://example.com/?utm_source=x', 'https://example.com/#top' ) as $url ) {

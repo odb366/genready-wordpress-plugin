@@ -17,7 +17,7 @@ use GenReady\Connection\TokenStore;
 use GenReady\Fixes\JsonLdFix;
 use GenReady\Onboarding\AccountCreator;
 use GenReady\Onboarding\AnonymousScans;
-use GenReady\Onboarding\PageUrl;
+use GenReady\Onboarding\RestArgs;
 use GenReady\Support\Text;
 use GenReady\Verification\MetaTag;
 
@@ -178,8 +178,8 @@ final class Rest {
 				'url' => array(
 					'type'              => 'string',
 					'default'           => '',
-					'sanitize_callback' => array( $this, 'sanitize_page_url' ),
-					'validate_callback' => array( $this, 'validate_page_url' ),
+					'sanitize_callback' => array( RestArgs::class, 'sanitize_page_url' ),
+					'validate_callback' => array( RestArgs::class, 'validate_page_url' ),
 				),
 			)
 		);
@@ -191,7 +191,7 @@ final class Rest {
 				'scan' => array(
 					'type'              => 'string',
 					'default'           => '',
-					'validate_callback' => array( $this, 'validate_scan_id' ),
+					'validate_callback' => array( RestArgs::class, 'validate_scan_id' ),
 				),
 			)
 		);
@@ -204,7 +204,7 @@ final class Rest {
 					'type'              => 'string',
 					'required'          => true,
 					'sanitize_callback' => 'sanitize_text_field',
-					'validate_callback' => array( $this, 'validate_email_text' ),
+					'validate_callback' => array( RestArgs::class, 'validate_email_text' ),
 				),
 			)
 		);
@@ -309,6 +309,10 @@ final class Rest {
 	 */
 	public function scan( $request ) {
 		$url = (string) $request->get_param( 'url' );
+		if ( RestArgs::NOT_A_PAGE === $url ) {
+			// Not empty, but not an http or https address: never the home page instead (spec 4.1).
+			return $this->error( __( 'Enter an address on this site.', 'genready' ), 'NOT_THIS_SITE' );
+		}
 		if ( null !== $this->store->load() ) {
 			$result = $this->setup->scan( $url );
 			if ( isset( $result['error'] ) ) {
@@ -331,7 +335,8 @@ final class Rest {
 	 */
 	public function report( $request ) {
 		if ( null === $this->store->load() ) {
-			$state = $this->reports->state( (string) $request->get_param( 'scan' ) );
+			// The stored scan IDs are lower case (AnonymousScans::remember()).
+			$state = $this->reports->state( strtolower( (string) $request->get_param( 'scan' ) ) );
 			return $state instanceof ApiError ? $this->api_error( $state ) : $state;
 		}
 		if ( '' === $this->reports->last_report_id() ) {
@@ -355,42 +360,6 @@ final class Rest {
 		}
 		$this->reports->forget_account();
 		return array( 'ok' => true );
-	}
-
-	/**
-	 * Clean a page address. Only http and https stay.
-	 *
-	 * @param mixed $value Raw value.
-	 */
-	public function sanitize_page_url( $value ): string {
-		return is_string( $value ) ? esc_url_raw( trim( $value ), array( 'http', 'https' ) ) : '';
-	}
-
-	/**
-	 * Check a page address.
-	 *
-	 * @param mixed $value Raw value.
-	 */
-	public function validate_page_url( $value ): bool {
-		return is_string( $value ) && strlen( $value ) <= PageUrl::MAX_LENGTH;
-	}
-
-	/**
-	 * Check a scan ID: a UUID, or empty.
-	 *
-	 * @param mixed $value Raw value.
-	 */
-	public function validate_scan_id( $value ): bool {
-		return is_string( $value ) && ( '' === $value || 1 === preg_match( AnonymousScans::UUID, $value ) );
-	}
-
-	/**
-	 * Check an email field. AccountCreator checks the address itself.
-	 *
-	 * @param mixed $value Raw value.
-	 */
-	public function validate_email_text( $value ): bool {
-		return is_string( $value ) && strlen( $value ) <= 320;
 	}
 
 	/**
