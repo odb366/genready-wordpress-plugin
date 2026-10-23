@@ -11,7 +11,7 @@ test('switch off: only Connect for an hour, and the API key still works', async 
 	try {
 		await openGenReady(page);
 		await page.getByRole('button', { name: 'Check this page' }).click();
-		const paused = 'GenReady paused scans without an account. Connect with a GenReady account.';
+		const paused = 'GenReady paused free scans for now. Connect with a GenReady account.';
 		await expect(page.locator('#genready-scan-result')).toHaveText(paused);
 		await expect(page.locator('#genready-scan-form')).toBeHidden();
 		await expect(page.getByRole('button', { name: 'Connect to GenReady' })).toBeVisible();

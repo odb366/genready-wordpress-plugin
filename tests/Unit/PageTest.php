@@ -32,6 +32,8 @@ class PageTest extends TestCase {
 	private $store;
 	/** @var FakeClient */
 	private $client;
+	/** @var FixCards|null The cards of page(), or null for the real ones. */
+	private $cards;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -65,6 +67,7 @@ class PageTest extends TestCase {
 		Monkey\Functions\when( 'esc_url_raw' )->returnArg( 1 );
 		$this->store  = new TokenStore();
 		$this->client = new FakeClient();
+		$this->cards  = null;
 	}
 
 	protected function tearDown(): void {
@@ -86,7 +89,7 @@ class PageTest extends TestCase {
 		return new Page(
 			$this->store,
 			new Reports( $this->store, $this->client, $scans ),
-			new FixCards(
+			$this->cards ?? new FixCards(
 				$fixes,
 				new RobotsFix( $fixes, $files, $this->client, $caches, 'd1' ),
 				new LlmsTxtFix( $fixes, $files, $this->client, $caches, $seo, 'd1' ),
@@ -325,12 +328,42 @@ class PageTest extends TestCase {
 		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
 		$this->transients['genready_anon_off'] = 1;
 		$html                                  = $this->render();
-		$this->assertStringContainsString( 'GenReady paused scans without an account. Connect with a GenReady account.', $html );
+		$this->assertStringContainsString( 'GenReady paused free scans for now. Connect with a GenReady account.', $html );
 		$this->assertStringContainsString( 'Connect to GenReady', $html );
 		$this->assertStringContainsString( 'id="genready-account"', $html, 'the fix card link still has a target' );
 		$this->assertStringNotContainsString( 'Check this page', $html );
 		$this->assertStringNotContainsString( 'genready-account-form', $html );
 		$this->assertSame( array(), $this->client->publics );
+	}
+
+	/** The Fixes tab without a connection, with one card as FixCards::without_account() makes it. */
+	private function render_fixes(): string {
+		$files       = new MemoryFiles();
+		$fixes       = new FixStore();
+		$caches      = new RecordingCaches();
+		$seo         = new SeoPlugins( $files );
+		$this->cards = new class( $fixes, new RobotsFix( $fixes, $files, $this->client, $caches, 'd1' ), new LlmsTxtFix( $fixes, $files, $this->client, $caches, $seo, 'd1' ), new JsonLdFix( $fixes, $this->client, $caches, $seo, 'd1' ), $files ) extends FixCards {
+			public function all( array $jsonld_target ): array {
+				return array( self::without_account( array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'applied' => false ) ) );
+			}
+			public function jsonld_target( ?string $report_url ): array {
+				return array();
+			}
+		};
+		return $this->render( array( 'tab' => 'fixes' ) );
+	}
+
+	public function test_fix_cards_without_a_stored_scan_link_to_the_first_screen(): void {
+		$html = $this->render_fixes();
+		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready">Check this page</a>', $html );
+		$this->assertStringNotContainsString( '#genready-account', $html );
+	}
+
+	public function test_fix_cards_with_a_stored_scan_link_to_the_banner(): void {
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$html = $this->render_fixes();
+		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready#genready-account">Create my free account</a>', $html );
+		$this->assertStringNotContainsString( 'Check this page', $html );
 	}
 
 	// Review Focus 3.

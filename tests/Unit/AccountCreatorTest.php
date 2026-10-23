@@ -185,7 +185,7 @@ class AccountCreatorTest extends TestCase {
 			'other account'   => array( 409, 'VERIFIED_ELSEWHERE', 'This site is connected to another GenReady account.' ),
 			'proof failed'    => array( 409, 'PROOF_FAILED', 'GenReady could not confirm that this site is yours. Connect with a GenReady account instead.' ),
 			'limit'           => array( 429, 'RATE_LIMITED', 'Too many account requests today. Try again tomorrow.' ),
-			'switch off'      => array( 503, 'WP_ONBOARDING_OFF', 'GenReady paused scans without an account. Connect with a GenReady account.' ),
+			'switch off'      => array( 503, 'WP_ONBOARDING_OFF', 'GenReady paused free scans for now. Connect with a GenReady account.' ),
 			'no answer'       => array( null, 'TIMEOUT', 'GenReady did not answer. Try again.' ),
 			'bad body'        => array( 400, 'VALIDATION_ERROR', 'GenReady could not do this. Try again.' ),
 			'no login here'   => array( 401, 'UNAUTHORIZED', 'GenReady could not do this. Try again.' ),

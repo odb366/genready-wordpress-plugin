@@ -352,7 +352,7 @@ class ClientTest extends TestCase {
 			'other 400'       => array( 400, 'VALIDATION_ERROR', 'GenReady could not do this. Try again.' ),
 			'proof failed'    => array( 409, 'PROOF_FAILED', 'GenReady could not confirm that this site is yours. Connect with a GenReady account instead.' ),
 			'email exists'    => array( 409, 'ACCOUNT_EXISTS', 'This email already has a GenReady account.' ),
-			'switch off'      => array( 503, 'WP_ONBOARDING_OFF', 'GenReady paused scans without an account. Connect with a GenReady account.' ),
+			'switch off'      => array( 503, 'WP_ONBOARDING_OFF', 'GenReady paused free scans for now. Connect with a GenReady account.' ),
 			'other 503'       => array( 503, 'HTTP_503', 'GenReady could not do this. Try again.' ),
 		);
 	}

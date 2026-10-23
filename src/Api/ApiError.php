@@ -108,7 +108,7 @@ final class ApiError {
 				return $this->busy_message();
 			case 503:
 				if ( 'WP_ONBOARDING_OFF' === $this->code ) {
-					return __( 'GenReady paused scans without an account. Connect with a GenReady account.', 'genready' );
+					return __( 'GenReady paused free scans for now. Connect with a GenReady account.', 'genready' );
 				}
 				break;
 		}

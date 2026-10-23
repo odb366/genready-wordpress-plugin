@@ -146,7 +146,7 @@ class AnonymousScansTest extends TestCase {
 	public function test_503_pauses_the_scans_for_an_hour(): void {
 		$this->client->public_result = new ApiError( 503, 'WP_ONBOARDING_OFF', '' );
 		$result                      = $this->scans()->start( 'https://example.com/' );
-		$this->assertSame( 'GenReady paused scans without an account. Connect with a GenReady account.', $result['error'] );
+		$this->assertSame( 'GenReady paused free scans for now. Connect with a GenReady account.', $result['error'] );
 		$this->assertTrue( AnonymousScans::paused() );
 		$this->assertSame( 3600, $this->ttl[ AnonymousScans::OFF ] );
 		$second = $this->scans()->start( 'https://example.com/' );

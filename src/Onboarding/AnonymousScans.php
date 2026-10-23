@@ -66,7 +66,7 @@ final class AnonymousScans {
 	 */
 	public function start( string $page_url ): array {
 		if ( self::paused() ) {
-			return self::refusal( __( 'GenReady paused scans without an account. Connect with a GenReady account.', 'genready' ), 'WP_ONBOARDING_OFF', 503 );
+			return self::refusal( __( 'GenReady paused free scans for now. Connect with a GenReady account.', 'genready' ), 'WP_ONBOARDING_OFF', 503 );
 		}
 		if ( ! PageUrl::is_on_site( $page_url ) ) {
 			return self::refusal( __( 'Enter an address on this site.', 'genready' ), 'NOT_THIS_SITE', null );

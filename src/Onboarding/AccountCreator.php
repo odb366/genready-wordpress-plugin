@@ -102,7 +102,7 @@ final class AccountCreator {
 			return self::refusal( __( 'Enter a valid email address.', 'genready' ), 'INVALID_EMAIL', null );
 		}
 		if ( AnonymousScans::paused() ) {
-			return self::refusal( __( 'GenReady paused scans without an account. Connect with a GenReady account.', 'genready' ), 'WP_ONBOARDING_OFF', 503 );
+			return self::refusal( __( 'GenReady paused free scans for now. Connect with a GenReady account.', 'genready' ), 'WP_ONBOARDING_OFF', 503 );
 		}
 		$proof = $this->proof->create();
 		try {

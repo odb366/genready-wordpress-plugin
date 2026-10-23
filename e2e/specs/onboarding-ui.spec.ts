@@ -141,10 +141,10 @@ test('a scan error gets the focus; a 503 hides both forms and opens Connect', as
 	await page.getByRole('button', { name: 'Check this page' }).click();
 	await settle(page, {
 		code: 'WP_ONBOARDING_OFF',
-		message: 'GenReady paused scans without an account. Connect with a GenReady account.',
+		message: 'GenReady paused free scans for now. Connect with a GenReady account.',
 	});
 	await expect(region).toHaveText(
-		'GenReady paused scans without an account. Connect with a GenReady account.',
+		'GenReady paused free scans for now. Connect with a GenReady account.',
 	);
 	await expect(page.locator('#genready-scan-form')).toBeHidden();
 	await expect(page.locator('#genready-account-form')).toBeHidden();

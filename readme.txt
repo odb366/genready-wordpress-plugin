@@ -20,14 +20,14 @@ Every fix has a preview, an Apply button and an Undo button. Nothing changes on 
 
 = Free, no account needed =
 
-* The score of any public page on your site.
+* The score of any public page on your site, with the Content, Crawlability and Agents scores.
 * "How AI sees this page": a screenshot next to the text AI crawlers read.
 * A list of findings that tells you what to fix.
 * 3 scans a day for each site.
 
 = Free with a GenReady account =
 
-* One click in the plugin makes the account, saves your site and keeps your results.
+* One click in the plugin makes the account and saves your site and your results.
 * A new scan on request. Each scan uses 1 API credit from your plan.
 
 = With GenReady Pro and Agency =
@@ -88,7 +88,7 @@ No. "Check this page" shows the score of any public page on your site, 3 times a
 
 = What happens when I create an account in the plugin? =
 
-GenReady creates a free account for the email, adds this site and connects the plugin. It emails you a link to set your password. You need the password, or Google sign-in with the same address, to sign in on genready.ai, for example to upgrade. If nobody sets the password within 30 days, GenReady deletes the account.
+GenReady creates a free account for the email, adds this site and connects the plugin. It emails you a link to set your password. You need the password, or Google sign-in with the same address, to sign in on genready.ai, for example to upgrade. If nobody sets the password within 30 days, GenReady deletes the account. The plugin then adds a GenReady verification tag to your home page.
 
 = I already have a GenReady account. =
 
@@ -96,7 +96,7 @@ Click "Already have a GenReady account? Connect" and sign in.
 
 = Why could GenReady not confirm that the site is mine? =
 
-GenReady reads a one-time code from your site's REST API. A security plugin that blocks the REST API stops this. So does a WordPress in a subfolder, or a server that answers one request at a time. Click "Connect to GenReady" instead. If that fails too, use an API key.
+GenReady reads a one-time code from your site's REST API. A security plugin that blocks the REST API stops this. So does a WordPress install in a subfolder, or a server that answers one request at a time. Click "Connect to GenReady" instead. If a security plugin blocks the REST API, Connect fails too: then use an API key.
 
 = Does it change what Google may crawl? =
 

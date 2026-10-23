@@ -4,7 +4,7 @@
  *
  * Included from Page::view(), so every variable here is local to that method.
  * $view: connected (bool), account (array from Reports::account(), or null), tag_on (bool),
- * paused (bool, true while GenReady paused scans without an account).
+ * paused (bool, true while GenReady paused free scans).
  *
  * @package GenReady
  */
@@ -26,7 +26,7 @@ if ( ! $connected ) :
 	<section class="genready-card genready-connect"<?php echo $paused ? ' id="genready-account"' : ''; ?> aria-labelledby="genready-connect-title">
 		<h2 id="genready-connect-title"><?php esc_html_e( 'Connect GenReady', 'genready' ); ?></h2>
 		<?php if ( $paused ) : ?>
-			<div class="notice notice-warning inline"><p><?php esc_html_e( 'GenReady paused scans without an account. Connect with a GenReady account.', 'genready' ); ?></p></div>
+			<div class="notice notice-warning inline"><p><?php esc_html_e( 'GenReady paused free scans for now. Connect with a GenReady account.', 'genready' ); ?></p></div>
 		<?php endif; ?>
 		<p><?php esc_html_e( 'See how AI search engines and agents read your site, and apply fixes for robots.txt, llms.txt and structured data.', 'genready' ); ?></p>
 		<p class="genready-consent">
