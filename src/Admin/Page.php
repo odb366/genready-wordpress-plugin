@@ -276,10 +276,10 @@ final class Page {
 		}
 		if ( 'fixes' === $tab ) {
 			return array(
-				'connected' => $connected,
-				// Without a stored scan the Overview is the first screen, which has no account form.
-				'scanned'   => ! $connected && array() !== $this->scans->all(),
-				'cards'     => $this->fix_cards(),
+				'connected'    => $connected,
+				// The Overview is the first screen (not paused, no stored scan), which has no account form.
+				'first_screen' => ! $connected && 'start' === $this->view_name( 'overview', false ),
+				'cards'        => $this->fix_cards(),
 			);
 		}
 		return array(

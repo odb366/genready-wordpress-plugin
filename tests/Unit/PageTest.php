@@ -366,6 +366,14 @@ class PageTest extends TestCase {
 		$this->assertStringNotContainsString( 'Check this page', $html );
 	}
 
+	// While GenReady paused free scans the Overview is the connect form, which has id="genready-account".
+	public function test_fix_cards_while_free_scans_are_paused_link_to_the_connect_form(): void {
+		$this->transients['genready_anon_off'] = 1;
+		$html                                  = $this->render_fixes();
+		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready#genready-account">Create my free account</a>', $html );
+		$this->assertStringNotContainsString( 'Check this page', $html );
+	}
+
 	// Review Focus 3.
 	public function test_overview_shows_the_first_screen_after_the_salts_change(): void {
 		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );

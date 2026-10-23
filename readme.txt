@@ -88,7 +88,7 @@ No. "Check this page" shows the score of any public page on your site, 3 times a
 
 = What happens when I create an account in the plugin? =
 
-GenReady creates a free account for the email, adds this site and connects the plugin. It emails you a link to set your password. You need the password, or Google sign-in with the same address, to sign in on genready.ai, for example to upgrade. If nobody sets the password within 30 days, GenReady deletes the account. The plugin then adds a GenReady verification tag to your home page.
+GenReady creates a free account for the email, adds this site and connects the plugin. The plugin then adds a GenReady verification tag to your home page. GenReady emails you a link to set your password. You need the password, or Google sign-in with the same address, to sign in on genready.ai, for example to upgrade. If nobody sets the password within 30 days, GenReady deletes the account.
 
 = I already have a GenReady account. =
 

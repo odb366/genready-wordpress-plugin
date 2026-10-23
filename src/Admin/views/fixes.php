@@ -3,8 +3,8 @@
  * Fixes tab: one card for each fix.
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: connected (bool), scanned (bool, true when the plugin has a stored
- * scan without an account), cards (arrays from FixCards::card()).
+ * $view: connected (bool), first_screen (bool, true when the Overview is the
+ * first screen: not paused and no stored scan), cards (arrays from FixCards::card()).
  *
  * @package GenReady
  */
@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
 
 $connected = ! empty( $view['connected'] );
 $cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
-$scanned   = ! empty( $view['scanned'] );
+$first     = ! empty( $view['first_screen'] );
 ?>
 <div class="genready-fixes">
 	<?php foreach ( $cards as $card ) : ?>
@@ -37,10 +37,10 @@ $scanned   = ! empty( $view['scanned'] );
 			</p>
 			<p class="genready-fix__message" data-genready-field="message"<?php echo '' === (string) ( $card['message'] ?? '' ) ? ' hidden' : ''; ?>><?php echo esc_html( (string) ( $card['message'] ?? '' ) ); ?></p>
 			<?php if ( ! empty( $card['account_link'] ) ) : ?>
-				<?php if ( $scanned ) : ?>
-					<p class="genready-fix__account"><a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready#genready-account' ) ); ?>"><?php esc_html_e( 'Create my free account', 'genready' ); ?></a></p>
-				<?php else : ?>
+				<?php if ( $first ) : ?>
 					<p class="genready-fix__account"><a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready' ) ); ?>"><?php esc_html_e( 'Check this page', 'genready' ); ?></a></p>
+				<?php else : ?>
+					<p class="genready-fix__account"><a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready#genready-account' ) ); ?>"><?php esc_html_e( 'Create my free account', 'genready' ); ?></a></p>
 				<?php endif; ?>
 			<?php endif; ?>
 			<p class="genready-fix__live" data-genready-field="live"<?php echo null === $live ? ' hidden' : ''; ?>><?php echo esc_html( null === $live ? '' : (string) ( $live['message'] ?? '' ) ); ?></p>

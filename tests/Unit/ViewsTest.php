@@ -275,7 +275,7 @@ class ViewsTest extends TestCase {
 
 	public function test_fix_cards_without_an_account_link_to_the_banner(): void {
 		$card = array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => 'Create a free account first. GenReady Pro and Agency generate this file.', 'account_link' => true, 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
-		$html = Page::view( 'fixes', array( 'connected' => false, 'scanned' => true, 'cards' => array( $card ) ) );
+		$html = Page::view( 'fixes', array( 'connected' => false, 'first_screen' => false, 'cards' => array( $card ) ) );
 		$this->assertStringContainsString( 'Create a free account first. GenReady Pro and Agency generate this file.', $html );
 		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready#genready-account">Create my free account</a>', $html );
 		$this->assertStringNotContainsString( 'Check this page', $html );
@@ -286,7 +286,7 @@ class ViewsTest extends TestCase {
 	// Without a stored scan the Overview is the first screen, which has no account form.
 	public function test_fix_cards_without_a_stored_scan_link_to_the_first_screen(): void {
 		$card = array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => 'Create a free account first. GenReady Pro and Agency generate this file.', 'account_link' => true, 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
-		$html = Page::view( 'fixes', array( 'connected' => false, 'scanned' => false, 'cards' => array( $card ) ) );
+		$html = Page::view( 'fixes', array( 'connected' => false, 'first_screen' => true, 'cards' => array( $card ) ) );
 		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready">Check this page</a>', $html );
 		$this->assertStringNotContainsString( '#genready-account', $html );
 		$this->assertStringNotContainsString( 'Create my free account', $html );
