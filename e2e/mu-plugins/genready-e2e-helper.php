@@ -5,7 +5,8 @@
  *
  * Routes (namespace genready-e2e/v1, manage_options only, cookie + X-WP-Nonce):
  *   POST /option       { name, value?, delete?, merge? }  set, merge (arrays) or delete one option
- *   GET  /option       ?name=                      one option value (never genready_connection)
+ *   GET  /option       ?name=                      one option value (never genready_connection, genready_proof
+ *                                                  or genready_anonymous_scans)
  *   GET  /options      ?prefix=genready            option names that start with the prefix
  *   GET  /file         ?name=robots.txt|llms.txt   file in the site root (content or null)
  *   POST /file         { name, content }           write a file in the site root
@@ -13,6 +14,11 @@
  *   POST /http-log/reset
  *   POST /lock-probe                               take, re-take and release the refresh lock (SQLite proof)
  *   POST /oauth-refresh                            run the plugin's OAuth refresh once
+ *   POST /anon-scan    { id, url, token }          store a scan through AnonymousScans (token encrypted)
+ *   POST /fake-wp      { mode }                    'off': answer every /api/v1/wp/ call with the server's 503
+ *   POST /proof-block  { on }                      the proof route answers 404 while on
+ *   POST /permalinks   { structure }               set the permalink structure and flush the rules
+ *   POST /proof-probe                              delete one option row twice (SQLite delete count, spec 16.5)
  *
  * It also logs every outbound HTTP request (URL and whether the request was a front-end page view)
  * to the option e2e_http_log, so the no-frontend-tracking spec can prove the plugin made no call.
@@ -79,8 +85,8 @@ add_action(
 				'permission_callback' => $admin,
 				'callback'            => static function ( WP_REST_Request $request ) {
 					$name = (string) $request->get_param( 'name' );
-					// Never hand out the connection: it holds the encrypted tokens.
-					if ( '' === $name || 'genready_connection' === $name ) {
+					// Never hand out the connection, the proof or the scans: they hold secrets.
+					if ( '' === $name || in_array( $name, array( 'genready_connection', 'genready_proof', 'genready_anonymous_scans' ), true ) ) {
 						return new WP_Error( 'e2e', 'not allowed', array( 'status' => 400 ) );
 					}
 					wp_cache_delete( $name, 'options' );
@@ -198,6 +204,116 @@ add_action(
 					return array( 'ok' => true );
 				},
 			)
+		);
+	}
+);
+
+// Onboarding v2 (plan C2). Scripted answers for the kill switch, and a blocked proof route.
+add_filter(
+	'pre_http_request',
+	static function ( $pre, $args, $url ) {
+		if ( 'off' !== get_option( 'e2e_fake_wp' ) || false === strpos( (string) $url, '/api/v1/wp/' ) ) {
+			return $pre;
+		}
+		return array(
+			'headers'  => array(),
+			'body'     => wp_json_encode(
+				array(
+					'error' => array(
+						'code'    => 'WP_ONBOARDING_OFF',
+						'message' => 'Scans from the WordPress plugin without an account are off for now. Connect with a GenReady account.',
+					),
+					'meta'  => array(),
+				)
+			),
+			'response' => array(
+				'code'    => 503,
+				'message' => 'Service Unavailable',
+			),
+			'cookies'  => array(),
+			'filename' => null,
+		);
+	},
+	10,
+	3
+);
+
+add_filter(
+	'rest_pre_dispatch',
+	static function ( $result, $server, $request ) {
+		if ( get_option( 'e2e_proof_block' ) && 0 === strpos( $request->get_route(), '/genready/v1/proof/' ) ) {
+			return new WP_Error( 'rest_no_route', 'No route was found matching the URL and request method.', array( 'status' => 404 ) );
+		}
+		return $result;
+	},
+	10,
+	3
+);
+
+add_action(
+	'rest_api_init',
+	static function () {
+		$admin = static function () {
+			return current_user_can( 'manage_options' );
+		};
+		$post  = static function ( string $path, callable $callback ) use ( $admin ) {
+			register_rest_route(
+				'genready-e2e/v1',
+				$path,
+				array(
+					'methods'             => 'POST',
+					'permission_callback' => $admin,
+					'callback'            => $callback,
+				)
+			);
+		};
+		// Store a seeded scan through AnonymousScans, so the token is encrypted as in real use.
+		$post(
+			'/anon-scan',
+			static function ( WP_REST_Request $request ) {
+				$store = new \GenReady\Connection\TokenStore();
+				( new \GenReady\Onboarding\AnonymousScans( $store, new \GenReady\Api\Client( $store ) ) )->remember( (string) $request->get_param( 'id' ), (string) $request->get_param( 'url' ), (string) $request->get_param( 'token' ) );
+				return array( 'ok' => true );
+			}
+		);
+		$post(
+			'/fake-wp',
+			static function ( WP_REST_Request $request ) {
+				update_option( 'e2e_fake_wp', (string) $request->get_param( 'mode' ), false );
+				return array( 'ok' => true );
+			}
+		);
+		$post(
+			'/proof-block',
+			static function ( WP_REST_Request $request ) {
+				update_option( 'e2e_proof_block', $request->get_param( 'on' ) ? 1 : 0, false );
+				return array( 'ok' => true );
+			}
+		);
+		$post(
+			'/permalinks',
+			static function ( WP_REST_Request $request ) {
+				global $wp_rewrite;
+				// set_permalink_structure() updates the option and the in-memory rules, so the flush
+				// stores the rules of the new structure (update_option alone keeps the old ones).
+				$wp_rewrite->set_permalink_structure( (string) $request->get_param( 'structure' ) );
+				flush_rewrite_rules();
+				return array( 'ok' => true );
+			}
+		);
+		// Spec 16.5: the second DELETE of one option row must affect 0 rows on SQLite too.
+		$post(
+			'/proof-probe',
+			static function () {
+				global $wpdb;
+				update_option( 'e2e_probe', 'x', false );
+				$first  = $wpdb->delete( $wpdb->options, array( 'option_name' => 'e2e_probe' ) );
+				$second = $wpdb->delete( $wpdb->options, array( 'option_name' => 'e2e_probe' ) );
+				return array(
+					'first'  => (int) $first,
+					'second' => (int) $second,
+				);
+			}
 		);
 	}
 );

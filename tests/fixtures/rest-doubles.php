@@ -5,9 +5,28 @@ namespace GenReady\Tests\Unit;
 class FakeRequest {
 	/** @var array */
 	private $params;
+	/** @var string */
+	private $method;
+	/** @var array|null */
+	private $url_params;
 
-	public function __construct( array $params = array() ) {
-		$this->params = $params;
+	/**
+	 * @param array      $params     Merged parameters (get_param()).
+	 * @param string     $method     HTTP method.
+	 * @param array|null $url_params Parameters from the route pattern. Null means $params.
+	 */
+	public function __construct( array $params = array(), string $method = 'GET', ?array $url_params = null ) {
+		$this->params     = $params;
+		$this->method     = $method;
+		$this->url_params = $url_params;
+	}
+
+	public function get_method() {
+		return $this->method;
+	}
+
+	public function get_url_params() {
+		return null === $this->url_params ? $this->params : $this->url_params;
 	}
 
 	public function get_param( $key ) {

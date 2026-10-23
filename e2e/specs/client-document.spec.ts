@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { SITE, login, openGenReady } from '../lib/helpers';
+import { SITE, login, openConnectForm, openGenReady } from '../lib/helpers';
 
 test('the OAuth client document is 404 until a connect starts', async ({ page, playwright }) => {
 	// A visitor with no cookies, so the answer does not depend on a login.
@@ -9,6 +9,7 @@ test('the OAuth client document is 404 until a connect starts', async ({ page, p
 
 	await login(page);
 	await openGenReady(page);
+	await openConnectForm(page);
 	expect((await visitor.get('/wp-json/genready/v1/client')).status()).toBe(404);
 	await page.getByRole('button', { name: 'Connect to GenReady' }).click();
 	await page.waitForURL(/^http:\/\/127\.0\.0\.1:5002\//);

@@ -275,4 +275,85 @@ class ClientTest extends TestCase {
 		Monkey\Functions\when( 'wp_remote_request' )->justReturn( $this->response( 200, array( 'data' => array( 'ok' => 1 ) ) ) );
 		$this->assertSame( array( 'ok' => 1 ), $this->client_for( 'https://genready.ai' )->request( 'GET', '/x' ) );
 	}
+
+	// Plan C2: calls without an account.
+
+	public function test_call_public_sends_no_stored_credentials(): void {
+		$this->connect( array( 'method' => 'api_key', 'api_key' => 'gr_live_secret_key_123456' ) );
+		Monkey\Functions\expect( 'wp_remote_request' )->once()->andReturnUsing(
+			function ( $url, $args ) {
+				$this->assertSame( 'https://genready.ai/api/v1/wp/scans', $url );
+				$this->assertArrayNotHasKey( 'Authorization', $args['headers'] );
+				$this->assertSame( 0, $args['redirection'] );
+				$this->assertSame( 15, $args['timeout'] );
+				$this->assertSame( 'GenReady-WordPress/1.0.0; WordPress/6.8', $args['headers']['User-Agent'] );
+				$this->assertSame( array( 'pageUrl' => 'https://example.com/' ), json_decode( $args['body'], true ) );
+				return $this->response( 202, array( 'data' => array( 'scanId' => 'a', 'scanToken' => 'b' ), 'meta' => array() ) );
+			}
+		);
+		$result = ( new Client( $this->store ) )->call_public( 'POST', '/api/v1/wp/scans', array( 'pageUrl' => 'https://example.com/' ) );
+		$this->assertSame( array( 'scanId' => 'a', 'scanToken' => 'b' ), $result );
+	}
+
+	public function test_call_public_sends_the_scan_token_as_bearer_with_the_given_timeout(): void {
+		Monkey\Functions\expect( 'wp_remote_request' )->once()->andReturnUsing(
+			function ( $url, $args ) {
+				$this->assertSame( 'Bearer scan-token', $args['headers']['Authorization'] );
+				$this->assertSame( 20, $args['timeout'] );
+				$this->assertArrayNotHasKey( 'body', $args );
+				$this->assertStringNotContainsString( 'scan-token', $url );
+				return $this->response( 200, array( 'data' => array( 'scores' => array() ), 'meta' => array() ) );
+			}
+		);
+		( new Client( $this->store ) )->call_public( 'GET', '/api/v1/wp/scans/x', null, 'scan-token', 20 );
+	}
+
+	public function test_call_public_never_refreshes_on_401(): void {
+		$this->connect( array( 'method' => 'oauth', 'access_token' => 'a', 'refresh_token' => 'r' ) );
+		$refreshed = 0;
+		Monkey\Functions\when( 'wp_remote_request' )->justReturn( $this->response( 401, array( 'error' => array( 'code' => 'UNAUTHORIZED', 'message' => '' ), 'meta' => array() ) ) );
+		$client = new Client(
+			$this->store,
+			function () use ( &$refreshed ) {
+				++$refreshed;
+				return true;
+			}
+		);
+		$result = $client->call_public( 'GET', '/api/v1/wp/scans/x', null, 't' );
+		$this->assertSame( 401, $result->status );
+		$this->assertSame( 'UNAUTHORIZED', $result->code );
+		$this->assertSame( 0, $refreshed );
+	}
+
+	public function test_call_public_reads_the_retry_after_header_of_a_429(): void {
+		Monkey\Functions\when( 'wp_remote_request' )->justReturn( $this->response( 429, array( 'error' => array( 'code' => 'RATE_LIMITED', 'message' => 'x' ), 'meta' => array() ), array( 'Retry-After' => '3600' ) ) );
+		$result = ( new Client( $this->store ) )->call_public( 'POST', '/api/v1/wp/scans', array() );
+		$this->assertSame( 'RATE_LIMITED', $result->code );
+		$this->assertSame( 3600, $result->details['retryAfterSeconds'] );
+	}
+
+	public function test_call_public_refuses_an_http_base_on_a_live_site(): void {
+		Monkey\Functions\when( 'wp_get_environment_type' )->justReturn( 'production' );
+		Monkey\Functions\expect( 'wp_remote_request' )->never();
+		$result = $this->client_for( 'http://genready.example' )->call_public( 'POST', '/api/v1/wp/scans', array() );
+		$this->assertSame( 'INSECURE_BASE', $result->code );
+	}
+
+	/**
+	 * @dataProvider onboarding_errors
+	 */
+	public function test_onboarding_error_texts( int $status, string $code, string $text ): void {
+		$this->assertSame( $text, ( new ApiError( $status, $code, 'server text' ) )->user_message() );
+	}
+
+	public function onboarding_errors(): array {
+		return array(
+			'page not public' => array( 400, 'INVALID_URL', 'GenReady can check only pages that anyone can open on the internet.' ),
+			'other 400'       => array( 400, 'VALIDATION_ERROR', 'GenReady could not do this. Try again.' ),
+			'proof failed'    => array( 409, 'PROOF_FAILED', 'GenReady could not confirm that this site is yours. Connect with a GenReady account instead.' ),
+			'email exists'    => array( 409, 'ACCOUNT_EXISTS', 'This email already has a GenReady account.' ),
+			'switch off'      => array( 503, 'WP_ONBOARDING_OFF', 'GenReady paused free scans for now. Connect with a GenReady account.' ),
+			'other 503'       => array( 503, 'HTTP_503', 'GenReady could not do this. Try again.' ),
+		);
+	}
 }

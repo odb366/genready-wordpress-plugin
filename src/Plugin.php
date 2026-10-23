@@ -23,6 +23,9 @@ use GenReady\Fixes\FixStore;
 use GenReady\Fixes\JsonLdFix;
 use GenReady\Fixes\LlmsTxtFix;
 use GenReady\Fixes\RobotsFix;
+use GenReady\Onboarding\AccountCreator;
+use GenReady\Onboarding\AnonymousScans;
+use GenReady\Onboarding\Proof;
 use GenReady\Verification\MetaTag;
 
 defined( 'ABSPATH' ) || exit;
@@ -49,6 +52,12 @@ final class Plugin {
 	 * @var OAuth|null
 	 */
 	private $oauth = null;
+	/**
+	 * Scans made without an account.
+	 *
+	 * @var AnonymousScans|null
+	 */
+	private $scans = null;
 
 	/**
 	 * Return the single instance.
@@ -102,15 +111,29 @@ final class Plugin {
 		add_filter( SeoPlugins::SCHEMA_FILTERS['aioseo'], array( $jsonld, 'aioseo' ), 99 );
 
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+		// The one-time proof for "Create my free account". It is public; see Proof::register().
+		$proof = new Proof();
+		add_action( 'rest_api_init', array( $proof, 'register' ) );
+		$this->scans = new AnonymousScans( $this->store, $client );
+		$account     = new AccountCreator( $this->store, $client, $proof, $this->scans, $meta_tag, $caches );
 		add_action( 'admin_init', array( $this, 'maybe_handle_oauth_callback' ) );
 		add_action( 'admin_init', array( $this, 'register_privacy_text' ) );
 
 		// The admin page and its REST routes. Building them makes no call and reads no option.
-		$reports = new Reports( $this->store, $client );
-		$cards   = new FixCards( $fixes, $robots, $llms, $jsonld, $files );
-		$rest    = new Rest( $this->store, $client, $this->oauth, $api_key, $site_setup, $meta_tag, $caches, $reports, $cards );
+		$reports = new Reports( $this->store, $client, $this->scans );
+		$cards   = new FixCards(
+			$fixes,
+			$robots,
+			$llms,
+			$jsonld,
+			$files,
+			function (): bool {
+				return null !== $this->store->load();
+			}
+		);
+		$rest    = new Rest( $this->store, $client, $this->oauth, $api_key, $site_setup, $meta_tag, $caches, $reports, $cards, $this->scans, $account );
 		add_action( 'rest_api_init', array( $rest, 'register' ) );
-		( new Page( $this->store, $reports, $cards ) )->register();
+		( new Page( $this->store, $reports, $cards, $this->scans ) )->register();
 	}
 
 	/**
@@ -171,7 +194,7 @@ final class Plugin {
 		}
 		wp_add_privacy_policy_content(
 			'GenReady',
-			wp_kses_post( wpautop( __( 'The GenReady plugin does not collect data about visitors to this site and sets no cookies. Site administrators who connect the plugin send site data to genready.ai, as the plugin readme describes.', 'genready' ) ) )
+			wp_kses_post( wpautop( __( 'The GenReady plugin does not collect data about visitors to this site and sets no cookies. Site administrators who use the plugin send site data to genready.ai, as the plugin readme describes.', 'genready' ) ) )
 		);
 	}
 
@@ -196,6 +219,10 @@ final class Plugin {
 		}
 		$user_id = get_current_user_id();
 		$result  = $this->oauth->handle_callback( $user_id, $query );
+		if ( ! empty( $result['ok'] ) ) {
+			// A new connection ends the scans made without an account (spec R20).
+			$this->scans->clear();
+		}
 		set_transient( 'genready_notice_' . $user_id, $result, 60 );
 		wp_safe_redirect( admin_url( 'admin.php?page=genready' ) );
 		$this->end_request();

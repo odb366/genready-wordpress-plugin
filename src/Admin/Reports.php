@@ -11,6 +11,7 @@ use GenReady\Api\ApiError;
 use GenReady\Api\Client;
 use GenReady\Connection\SiteSetup;
 use GenReady\Connection\TokenStore;
+use GenReady\Onboarding\AnonymousScans;
 use GenReady\Support\Text;
 
 defined( 'ABSPATH' ) || exit;
@@ -51,16 +52,24 @@ class Reports {
 	 * @var Client
 	 */
 	private $client;
+	/**
+	 * Scans made without an account, or null.
+	 *
+	 * @var AnonymousScans|null
+	 */
+	private $scans;
 
 	/**
 	 * Build the reader.
 	 *
-	 * @param TokenStore $store  Token storage.
-	 * @param Client     $client API client.
+	 * @param TokenStore          $store  Token storage.
+	 * @param Client              $client API client.
+	 * @param AnonymousScans|null $scans  Scans made without an account.
 	 */
-	public function __construct( TokenStore $store, Client $client ) {
+	public function __construct( TokenStore $store, Client $client, ?AnonymousScans $scans = null ) {
 		$this->store  = $store;
 		$this->client = $client;
+		$this->scans  = $scans;
 	}
 
 	/**
@@ -73,22 +82,36 @@ class Reports {
 	}
 
 	/**
-	 * The URL of the cached report, or null.
+	 * The URL of the cached report, else the page of the last scan, or null.
+	 * The cache lives 5 minutes; the stored URL keeps the JSON-LD fix on the
+	 * scanned page after that.
 	 */
 	public function cached_url(): ?string {
 		$cache = get_transient( SiteSetup::REPORT_CACHE );
 		$url   = is_array( $cache ) && is_array( $cache['report'] ?? null ) ? ( $cache['report']['url'] ?? null ) : null;
-		return is_string( $url ) && '' !== $url ? $url : null;
+		if ( is_string( $url ) && '' !== $url ) {
+			return $url;
+		}
+		$settings = get_option( SiteSetup::SETTINGS );
+		$stored   = is_array( $settings ) ? ( $settings['last_report_url'] ?? null ) : null;
+		return is_string( $stored ) && '' !== $stored ? $stored : null;
 	}
 
 	/**
-	 * The state of the last scan.
+	 * The state of the last scan. Without a connection, the state of a stored
+	 * scan: $scan_id when it is in the plugin's own list, else the newest.
 	 *
+	 * @param string $scan_id Scan ID of a stored scan, or ''. Ignored with a connection.
 	 * @return array|ApiError array( 'state' => 'none' ), array( 'state' => 'pending' ),
-	 *                        array( 'state' => 'failed', 'message' => string ) or
-	 *                        array( 'state' => 'complete', 'report' => array ). ApiError for other failures.
+	 *                        array( 'state' => 'failed', 'message' => string ),
+	 *                        array( 'state' => 'gone', 'message' => string ) or
+	 *                        array( 'state' => 'complete', 'report' => array ). Without a connection each
+	 *                        state but 'none' also has 'scan_id'. ApiError for other failures.
 	 */
-	public function state() {
+	public function state( string $scan_id = '' ) {
+		if ( null !== $this->scans && null === $this->store->load() ) {
+			return $this->anonymous_state( $scan_id );
+		}
 		$id = $this->last_report_id();
 		if ( '' === $id ) {
 			return array( 'state' => 'none' );
@@ -104,8 +127,55 @@ class Reports {
 		if ( $result instanceof ApiError ) {
 			return $this->state_for_error( $result );
 		}
+		return $this->complete( $id, $result );
+	}
+
+	/**
+	 * The state of a stored scan, read with its token.
+	 *
+	 * @param string $scan_id Requested scan ID, or ''.
+	 * @return array|ApiError
+	 */
+	private function anonymous_state( string $scan_id ) {
+		$ids = array_column( $this->scans->all(), 'id' );
+		if ( array() === $ids ) {
+			return array( 'state' => 'none' );
+		}
+		$id    = in_array( $scan_id, $ids, true ) ? $scan_id : $ids[0];
+		$cache = get_transient( SiteSetup::REPORT_CACHE );
+		if ( is_array( $cache ) && ( $cache['id'] ?? '' ) === $id && is_array( $cache['report'] ?? null ) ) {
+			return array(
+				'state'   => 'complete',
+				'report'  => $cache['report'],
+				'scan_id' => $id,
+			);
+		}
+		$result = $this->scans->fetch( $id );
+		if ( $result instanceof ApiError ) {
+			if ( 404 === $result->status ) {
+				// Expired, adopted or unknown. AnonymousScans removed it from the list.
+				return array(
+					'state'   => 'gone',
+					'message' => __( 'This scan is no longer available. Check the page again.', 'genready' ),
+					'scan_id' => $id,
+				);
+			}
+			$state = $this->state_for_error( $result );
+			return is_array( $state ) ? $state + array( 'scan_id' => $id ) : $state;
+		}
+		return $this->complete( $id, $result ) + array( 'scan_id' => $id );
+	}
+
+	/**
+	 * A 2xx answer as a state: pending while the scan runs, else the trimmed
+	 * report, cached for 5 minutes.
+	 *
+	 * @param string $id     Report ID.
+	 * @param array  $result The `data` of the answer.
+	 */
+	private function complete( string $id, array $result ): array {
 		if ( ! is_array( $result['scores'] ?? null ) || isset( $result['statusUrl'] ) ) {
-			// 202: the scan still runs. Client::request() returns the data of any 2xx.
+			// 202: the scan still runs. The client returns the data of any 2xx.
 			return array( 'state' => 'pending' );
 		}
 		$report = self::summarize( $result );
@@ -128,8 +198,8 @@ class Reports {
 	 */
 	public function forget(): void {
 		$settings = get_option( SiteSetup::SETTINGS );
-		if ( is_array( $settings ) && array_key_exists( 'last_report_id', $settings ) ) {
-			unset( $settings['last_report_id'] );
+		if ( is_array( $settings ) && ( array_key_exists( 'last_report_id', $settings ) || array_key_exists( 'last_report_url', $settings ) ) ) {
+			unset( $settings['last_report_id'], $settings['last_report_url'] );
 			update_option( SiteSetup::SETTINGS, $settings, false );
 		}
 		delete_transient( SiteSetup::REPORT_CACHE );

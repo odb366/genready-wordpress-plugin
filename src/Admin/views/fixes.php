@@ -3,7 +3,8 @@
  * Fixes tab: one card for each fix.
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: connected (bool), cards (arrays from FixCards::card()).
+ * $view: connected (bool), first_screen (bool, true when the Overview is the
+ * first screen: not paused and no stored scan), cards (arrays from FixCards::card()).
  *
  * @package GenReady
  */
@@ -14,12 +15,9 @@ defined( 'ABSPATH' ) || exit;
 
 $connected = ! empty( $view['connected'] );
 $cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
+$first     = ! empty( $view['first_screen'] );
 ?>
 <div class="genready-fixes">
-	<?php if ( ! $connected ) : ?>
-		<div class="notice notice-info inline"><p><?php esc_html_e( 'Connect GenReady to preview a fix. Undo works without a connection.', 'genready' ); ?></p></div>
-	<?php endif; ?>
-
 	<?php foreach ( $cards as $card ) : ?>
 		<?php
 		$kind = (string) ( $card['kind'] ?? '' );
@@ -38,6 +36,13 @@ $cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
 				<span class="<?php echo esc_attr( 'genready-state genready-state--' . (string) ( $card['state'] ?? 'not_applied' ) ); ?>" data-genready-field="state"><?php echo esc_html( (string) ( $card['state_text'] ?? '' ) ); ?></span>
 			</p>
 			<p class="genready-fix__message" data-genready-field="message"<?php echo '' === (string) ( $card['message'] ?? '' ) ? ' hidden' : ''; ?>><?php echo esc_html( (string) ( $card['message'] ?? '' ) ); ?></p>
+			<?php if ( ! empty( $card['account_link'] ) ) : ?>
+				<?php if ( $first ) : ?>
+					<p class="genready-fix__account"><a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready' ) ); ?>"><?php esc_html_e( 'Check this page', 'genready' ); ?></a></p>
+				<?php else : ?>
+					<p class="genready-fix__account"><a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready#genready-account' ) ); ?>"><?php esc_html_e( 'Create my free account', 'genready' ); ?></a></p>
+				<?php endif; ?>
+			<?php endif; ?>
 			<p class="genready-fix__live" data-genready-field="live"<?php echo null === $live ? ' hidden' : ''; ?>><?php echo esc_html( null === $live ? '' : (string) ( $live['message'] ?? '' ) ); ?></p>
 
 			<?php if ( 'robots' === $kind ) : ?>

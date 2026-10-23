@@ -28,11 +28,18 @@ class ViewsTest extends TestCase {
 		Monkey\Functions\when( '__' )->returnArg( 1 );
 		Monkey\Functions\when( '_n' )->alias( function ( $one, $many, $n ) { return 1 === $n ? $one : $many; } );
 		Monkey\Functions\when( 'admin_url' )->alias( function ( $p ) { return 'https://example.com/wp-admin/' . $p; } );
-		Monkey\Functions\when( 'date_i18n' )->alias( function ( $f, $t ) { return gmdate( 'Y-m-d', $t ); } );
+		Monkey\Functions\when( 'wp_date' )->alias(
+			function ( $format, $time ) {
+				$date = new \DateTime( '@' . $time );
+				$date->setTimezone( new \DateTimeZone( 'Europe/Sofia' ) ); // The site's time zone.
+				return $date->format( $format );
+			}
+		);
 		Monkey\Functions\when( 'get_option' )->justReturn( 'Y-m-d' );
 		Monkey\Functions\when( 'checked' )->alias( function ( $a, $b = true, $echo = true ) { $out = $a === $b ? ' checked="checked"' : ''; if ( $echo ) { echo $out; } return $out; } );
 		Monkey\Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
 		Monkey\Functions\when( 'wp_strip_all_tags' )->alias( 'strip_tags' );
+		Monkey\Functions\when( 'home_url' )->alias( function ( $p = '' ) { return 'https://example.com' . $p; } );
 	}
 
 	protected function tearDown(): void {
@@ -98,6 +105,22 @@ class ViewsTest extends TestCase {
 			);
 			$this->assert_safe( $html );
 		}
+	}
+
+	// Spec delta 11: "Scan again" can scan any page, so the connected text names no page.
+	public function test_a_running_scan_has_the_same_text_with_and_without_a_connection(): void {
+		foreach ( array( true, false ) as $connected ) {
+			$html = Page::view( 'overview', array( 'connected' => $connected, 'state' => array( 'state' => 'pending' ) ) );
+			$this->assertStringContainsString( '<p>Scanning this page. This takes about 30 seconds.</p>', $html );
+			$this->assertStringNotContainsString( 'home page', $html );
+		}
+	}
+
+	// PHP L1: wp_date() shows the date in the site's time zone; date_i18n() showed the UTC date.
+	public function test_the_scan_date_is_in_the_site_time_zone(): void {
+		$report = Reports::summarize( report_fixture( array( 'completedAt' => '2026-10-08T22:30:00.000Z' ) ) );
+		$html   = Page::view( 'overview', array( 'connected' => true, 'state' => array( 'state' => 'complete', 'report' => $report ) ) );
+		$this->assertStringContainsString( 'Scanned on 2026-10-09', $html, '01:30 in Sofia' );
 	}
 
 	public function test_fixes_view_escapes_card_text(): void {
@@ -230,5 +253,49 @@ class ViewsTest extends TestCase {
 		$fixture['aiView']['screenshotUrl'] = 'https://evil.example/a.png';
 		$this->assertNull( Reports::summarize( $fixture )['ai_view']['screenshot'] );
 		$this->assertSame( 'https://genready.ai/screenshots/a.png', Reports::summarize( report_fixture() )['ai_view']['screenshot'] );
+	}
+
+	public function test_overview_names_a_page_that_is_not_the_home_page(): void {
+		$report = Reports::summarize( report_fixture( array( 'url' => 'https://example.com/pricing/' ) ) );
+		$html   = Page::view( 'overview', array( 'connected' => true, 'state' => array( 'state' => 'complete', 'report' => $report ) ) );
+		$this->assertStringContainsString( 'How AI sees this page', $html );
+		$this->assertStringNotContainsString( 'How AI sees your homepage', $html );
+		$this->assertStringContainsString( '<p class="genready-aiview__url">https://example.com/pricing/</p>', $html );
+		$this->assertStringContainsString( 'alt="Screenshot of this page"', $html );
+		$this->assertStringContainsString( 'data-genready-url="https://example.com/pricing/"', $html );
+	}
+
+	public function test_overview_of_the_home_page_keeps_the_homepage_texts(): void {
+		$report = Reports::summarize( report_fixture() );
+		$html   = Page::view( 'overview', array( 'connected' => true, 'state' => array( 'state' => 'complete', 'report' => $report ) ) );
+		$this->assertStringContainsString( 'How AI sees your homepage', $html );
+		$this->assertStringContainsString( 'alt="Screenshot of your homepage"', $html );
+		$this->assertStringNotContainsString( 'genready-aiview__url', $html );
+	}
+
+	public function test_fix_cards_without_an_account_link_to_the_banner(): void {
+		$card = array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => 'Create a free account first. GenReady Pro and Agency generate this file.', 'account_link' => true, 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
+		$html = Page::view( 'fixes', array( 'connected' => false, 'first_screen' => false, 'cards' => array( $card ) ) );
+		$this->assertStringContainsString( 'Create a free account first. GenReady Pro and Agency generate this file.', $html );
+		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready#genready-account">Create my free account</a>', $html );
+		$this->assertStringNotContainsString( 'Check this page', $html );
+		$this->assertMatchesRegularExpression( '/data-genready-action="preview" disabled/', $html );
+		$this->assertStringNotContainsString( 'Connect GenReady to preview a fix.', $html );
+	}
+
+	// Without a stored scan the Overview is the first screen, which has no account form.
+	public function test_fix_cards_without_a_stored_scan_link_to_the_first_screen(): void {
+		$card = array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => 'Create a free account first. GenReady Pro and Agency generate this file.', 'account_link' => true, 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
+		$html = Page::view( 'fixes', array( 'connected' => false, 'first_screen' => true, 'cards' => array( $card ) ) );
+		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready">Check this page</a>', $html );
+		$this->assertStringNotContainsString( '#genready-account', $html );
+		$this->assertStringNotContainsString( 'Create my free account', $html );
+	}
+
+	public function test_the_scan_form_escapes_the_suggestions(): void {
+		$html = Page::view( 'scan-form', array( 'home' => 'https://example.com/', 'suggestions' => array( 'https://example.com/a"><script>alert(1)</script>' ), 'notice' => self::XSS ) );
+		$this->assert_safe( $html );
+		$this->assertStringContainsString( 'list="genready-pages"', $html );
+		$this->assertStringContainsString( 'novalidate', $html );
 	}
 }

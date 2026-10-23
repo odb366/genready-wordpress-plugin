@@ -16,6 +16,7 @@ E2E_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$E2E_DIR/.." && pwd)
 WORK=${1:-$E2E_DIR/test-results/work}
 SEED=${GENREADY_E2E_SEED:-$ROOT/.superpowers/sdd/2026-10-08-wordpress-plugin-b-plugin/e2e-tools/seed-users.cjs}
+ANON=${GENREADY_E2E_ANON:-$ROOT/.superpowers/sdd/2026-10-08-wordpress-plugin-b-plugin/e2e-tools/seed-anon-scan.cjs}
 SUMMARY="$E2E_DIR/test-results/summary.txt"
 mkdir -p "$WORK/genready" "$E2E_DIR/test-results"
 : >"$SUMMARY"
@@ -28,6 +29,10 @@ seed() {
 	else
 		echo "warning: no seed script at $SEED; the domain owner stays as it is" >&2
 	fi
+}
+
+anon_reset() {
+	node "$ANON" reset >/dev/null || { echo "BLOCKED: seed-anon-scan.cjs reset failed" >&2; exit 3; }
 }
 
 # The uninstall and Plugin Check runs use the release copy (no dev files).
@@ -84,16 +89,27 @@ run "uninstall (release copy)" uninstall.json uninstall.spec.ts "${COPY[@]}" GEN
 run "plugin-check (release copy)" plugin-check.json plugin-check.spec.ts "${COPY[@]}" GENREADY_E2E_PLUGIN_CHECK=1
 run "connect-key (release zip)" release.json connect-key.spec.ts "${ZIP[@]}"
 run "plugin-check (release zip)" release-plugin-check.json plugin-check.spec.ts "${ZIP[@]}" GENREADY_E2E_PLUGIN_CHECK=1
+# Onboarding v2 (plan C2). The account spec needs 2 Playground workers (spec 7.5) and more free memory.
+anon_reset
+run "first-screen" base.json first-screen.spec.ts
+run "scan-error" base.json scan-error.spec.ts
+run "recent-scans" base.json recent-scans.spec.ts
+seed pro
+run "switch-off" base.json switch-off.spec.ts
+anon_reset
+run "account (2 workers)" base.json account.spec.ts GENREADY_E2E_WORKERS=2 GENREADY_E2E_MIN_MB=1900
+anon_reset
+seed pro
 seed free
 run "free-plan" free.json free-plan.spec.ts
 seed pro
 
 # admin.js busy states: a page without WordPress, no Playground needed.
 start=$(date +%s)
-if (cd "$E2E_DIR" && npx playwright test specs/admin-busy.spec.ts); then
-	printf '| %-30s | %-26s | %-3s | PASS | %4ss |\n' "admin-busy (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
+if (cd "$E2E_DIR" && npx playwright test specs/admin-busy.spec.ts specs/onboarding-ui.spec.ts); then
+	printf '| %-30s | %-26s | %-3s | PASS | %4ss |\n' "admin-busy, onboarding-ui (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
 else
-	printf '| %-30s | %-26s | %-3s | FAIL | %4ss |\n' "admin-busy (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
+	printf '| %-30s | %-26s | %-3s | FAIL | %4ss |\n' "admin-busy, onboarding-ui (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
 	failed=1
 fi
 

@@ -3,31 +3,66 @@
  * Overview tab: score card, AI view, sections and footer.
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: connected (bool), state (array from Reports::state(), or state 'error').
+ * $view: connected (bool), state (array from Reports::state(), or state 'error'), and without a
+ * connection: home, suggestions, email, scans (from AnonymousScans::all()).
  *
  * @package GenReady
  */
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- included inside Page::view(); these variables are local.
 
+use GenReady\Admin\Page;
 use GenReady\Admin\ScoreCard;
+use GenReady\Onboarding\PageUrl;
 
 defined( 'ABSPATH' ) || exit;
 
 $state  = is_array( $view['state'] ?? null ) ? $view['state'] : array( 'state' => 'none' );
 $report = 'complete' === ( $state['state'] ?? '' ) && is_array( $state['report'] ?? null ) ? $state['report'] : null;
 
+$connected = ! empty( $view['connected'] );
+$scans     = is_array( $view['scans'] ?? null ) ? $view['scans'] : array();
+$open_scan = (string) ( $state['scan_id'] ?? '' );
+
+if ( ! $connected ) {
+	echo Page::view( 'banner', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
+	echo '<section class="genready-card genready-check" aria-label="' . esc_attr__( 'Check this page', 'genready' ) . '">';
+	echo Page::view( 'scan-form', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
+	echo '</section>';
+	if ( count( $scans ) >= 2 ) :
+		?>
+		<section class="genready-card genready-recent" aria-labelledby="genready-recent-title">
+			<h2 id="genready-recent-title"><?php esc_html_e( 'Recent scans', 'genready' ); ?></h2>
+			<ul>
+				<?php foreach ( $scans as $scan ) : ?>
+					<li>
+						<?php if ( $scan['id'] === $open_scan ) : ?>
+							<span aria-current="true"><?php echo esc_html( PageUrl::label( (string) $scan['url'] ) ); ?></span>
+						<?php else : ?>
+							<a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready&scan=' . $scan['id'] ) ); ?>"><?php echo esc_html( PageUrl::label( (string) $scan['url'] ) ); ?></a>
+						<?php endif; ?>
+						<span class="genready-recent__date"><?php echo esc_html( wp_date( (string) get_option( 'date_format' ), (int) $scan['at'] ) ); ?></span>
+					</li>
+				<?php endforeach; ?>
+			</ul>
+		</section>
+		<?php
+	endif;
+}
+
 if ( null === $report ) :
 	?>
 	<section class="genready-card genready-empty" data-genready-state="<?php echo esc_attr( (string) ( $state['state'] ?? 'none' ) ); ?>">
 		<?php if ( 'pending' === ( $state['state'] ?? '' ) ) : ?>
 			<h2><?php esc_html_e( 'The scan is running', 'genready' ); ?></h2>
-			<p><?php esc_html_e( 'GenReady is scanning your home page. This page updates when the report is ready.', 'genready' ); ?></p>
-		<?php elseif ( 'failed' === ( $state['state'] ?? '' ) || 'error' === ( $state['state'] ?? '' ) ) : ?>
+			<p><?php esc_html_e( 'Scanning this page. This takes about 30 seconds.', 'genready' ); ?></p>
+		<?php elseif ( in_array( $state['state'] ?? '', array( 'failed', 'error', 'gone' ), true ) ) : ?>
 			<h2><?php esc_html_e( 'No report to show', 'genready' ); ?></h2>
 			<div class="notice notice-error inline"><p><?php echo esc_html( (string) ( $state['message'] ?? '' ) ); ?></p></div>
-			<p><button type="button" class="button button-primary" data-genready-action="scan"><?php esc_html_e( 'Scan again', 'genready' ); ?></button></p>
-		<?php else : ?>
+			<?php if ( $connected ) : ?>
+				<p><button type="button" class="button button-primary" data-genready-action="scan"><?php esc_html_e( 'Scan again', 'genready' ); ?></button></p>
+			<?php endif; ?>
+		<?php elseif ( $connected ) : ?>
 			<h2><?php esc_html_e( 'No scan yet', 'genready' ); ?></h2>
 			<p><?php esc_html_e( 'Scan your home page to see how AI search engines and agents read it. A scan uses 1 API credit.', 'genready' ); ?></p>
 			<p><button type="button" class="button button-primary" data-genready-action="scan"><?php esc_html_e( 'Scan now', 'genready' ); ?></button></p>
@@ -44,6 +79,7 @@ $screenshot = is_string( $ai_view['screenshot'] ?? null ) ? $ai_view['screenshot
 $markdown   = is_string( $ai_view['markdown'] ?? null ) ? $ai_view['markdown'] : null;
 $gap        = is_int( $ai_view['gap'] ?? null ) ? $ai_view['gap'] : null;
 $first      = null !== $screenshot ? 'screenshot' : 'text';
+$is_home    = '' === (string) ( $report['url'] ?? '' ) || PageUrl::is_home( (string) $report['url'] );
 $fixes_url  = admin_url( 'options-general.php?page=genready&tab=fixes' );
 $verdicts   = array(
 	'pass' => __( 'Pass', 'genready' ),
@@ -97,7 +133,10 @@ $sections   = array(
 	</section>
 
 	<section class="genready-card genready-aiview" aria-labelledby="genready-aiview-title">
-		<h2 id="genready-aiview-title"><?php esc_html_e( 'How AI sees your homepage', 'genready' ); ?></h2>
+		<h2 id="genready-aiview-title"><?php echo esc_html( $is_home ? __( 'How AI sees your homepage', 'genready' ) : __( 'How AI sees this page', 'genready' ) ); ?></h2>
+		<?php if ( ! $is_home ) : ?>
+			<p class="genready-aiview__url"><?php echo esc_html( (string) $report['url'] ); ?></p>
+		<?php endif; ?>
 		<div class="genready-toggle" role="group" aria-label="<?php esc_attr_e( 'Choose a view', 'genready' ); ?>">
 			<button type="button" class="button" data-genready-view="screenshot" aria-pressed="<?php echo 'screenshot' === $first ? 'true' : 'false'; ?>"><?php esc_html_e( 'Screenshot', 'genready' ); ?></button>
 			<button type="button" class="button" data-genready-view="text" aria-pressed="<?php echo 'text' === $first ? 'true' : 'false'; ?>"><?php esc_html_e( 'What AI reads', 'genready' ); ?></button>
@@ -114,7 +153,7 @@ $sections   = array(
 		<?php endif; ?>
 		<div class="genready-aiview__panel" data-genready-panel="screenshot"<?php echo 'screenshot' === $first ? '' : ' hidden'; ?>>
 			<?php if ( null !== $screenshot ) : ?>
-				<img class="genready-shot" src="<?php echo esc_url( $screenshot ); ?>" alt="<?php esc_attr_e( 'Screenshot of your homepage', 'genready' ); ?>" loading="lazy" width="1280" height="800">
+				<img class="genready-shot" src="<?php echo esc_url( $screenshot ); ?>" alt="<?php echo esc_attr( $is_home ? __( 'Screenshot of your homepage', 'genready' ) : __( 'Screenshot of this page', 'genready' ) ); ?>" loading="lazy" width="1280" height="800">
 			<?php else : ?>
 				<p><?php esc_html_e( 'This scan has no screenshot.', 'genready' ); ?></p>
 			<?php endif; ?>
@@ -161,12 +200,12 @@ $sections   = array(
 	<?php endforeach; ?>
 
 	<p class="genready-footer">
-		<button type="button" class="button" data-genready-action="scan"><?php esc_html_e( 'Scan again', 'genready' ); ?></button>
+		<button type="button" class="button" data-genready-action="scan" data-genready-url="<?php echo esc_url( (string) ( $report['url'] ?? '' ) ); ?>"><?php esc_html_e( 'Scan again', 'genready' ); ?></button>
 		<?php if ( ! empty( $report['scanned_at'] ) ) : ?>
 			<span class="genready-footer__date">
 				<?php
 				/* translators: %s: date of the scan. */
-				echo esc_html( sprintf( __( 'Scanned on %s', 'genready' ), date_i18n( (string) get_option( 'date_format' ), (int) $report['scanned_at'] ) ) );
+				echo esc_html( sprintf( __( 'Scanned on %s', 'genready' ), wp_date( (string) get_option( 'date_format' ), (int) $report['scanned_at'] ) ) );
 				?>
 			</span>
 		<?php endif; ?>

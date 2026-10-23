@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +8,8 @@ export const API_BASE = 'http://127.0.0.1:5002';
 export const SITE = 'http://127.0.0.1:9411';
 export const REPORT_ID = '63720e48-6d92-4e0a-a862-a141951beb22';
 export const SEO = process.env.GENREADY_E2E_SEO || 'none';
+
+const TOOLS = process.env.GENREADY_E2E_TOOLS || join(__dirname, '../../.superpowers/sdd/2026-10-08-wordpress-plugin-b-plugin/e2e-tools');
 
 type Account = { email: string; password: string; apiKey: string };
 
@@ -37,9 +40,25 @@ export async function openGenReady(page: Page, tab: 'overview' | 'fixes' | 'conn
 	await expect(page.locator('.genready-admin h1')).toHaveText('GenReady');
 }
 
+/** Run seed-anon-scan.cjs (test DB only) and return its JSON line. */
+export function anonSeed(...args: string[]): any {
+	const out = execFileSync('node', [join(TOOLS, 'seed-anon-scan.cjs'), ...args], { encoding: 'utf8' });
+	return JSON.parse(out.trim().split('\n').pop() || '{}');
+}
+
+/** Open the connect form that the Overview shows behind "Already have a GenReady account? Connect". */
+export async function openConnectForm(page: Page): Promise<void> {
+	const link = page.getByRole('button', { name: 'Already have a GenReady account? Connect' }).first();
+	if (await link.isVisible()) {
+		await link.click();
+	}
+	await expect(page.getByRole('button', { name: 'Connect to GenReady' })).toBeVisible();
+}
+
 /** Connect with an API key from the Overview tab and wait for the verify and scan steps to finish. */
 export async function connectWithKey(page: Page, key: string, site = ''): Promise<void> {
 	await openGenReady(page, 'overview', site);
+	await openConnectForm(page);
 	await page.getByRole('button', { name: 'Use an API key' }).click();
 	await page.locator('#genready-key').fill(key);
 	await page.getByRole('button', { name: 'Connect with the key' }).click();
@@ -68,14 +87,20 @@ export class Helper {
 		return { 'X-WP-Nonce': this.nonce };
 	}
 
+	/** Every helper URL uses ?rest_route=, so the helper works with plain permalinks too. */
+	private url(path: string): string {
+		const [route, query] = path.split('?');
+		return `${this.base}/?rest_route=/genready-e2e/v1${route}${query ? `&${query}` : ''}`;
+	}
+
 	async get(path: string): Promise<any> {
-		const response = await this.request.get(`${this.base}/wp-json/genready-e2e/v1${path}`, { headers: this.headers() });
+		const response = await this.request.get(this.url(path), { headers: this.headers() });
 		expect(response.status(), `GET ${path}`).toBe(200);
 		return response.json();
 	}
 
 	async post(path: string, data: object = {}): Promise<any> {
-		const response = await this.request.post(`${this.base}/wp-json/genready-e2e/v1${path}`, { headers: this.headers(), data });
+		const response = await this.request.post(this.url(path), { headers: this.headers(), data });
 		expect(response.status(), `POST ${path}`).toBe(200);
 		return response.json();
 	}
@@ -114,6 +139,26 @@ export class Helper {
 
 	resetHttpLog() {
 		return this.post('/http-log/reset');
+	}
+
+	storeScan(id: string, url: string, token: string) {
+		return this.post('/anon-scan', { id, url, token });
+	}
+
+	fakeWp(mode: 'off' | '') {
+		return this.post('/fake-wp', { mode });
+	}
+
+	blockProof(on: boolean) {
+		return this.post('/proof-block', { on });
+	}
+
+	permalinks(structure: string) {
+		return this.post('/permalinks', { structure });
+	}
+
+	proofProbe(): Promise<{ first: number; second: number }> {
+		return this.post('/proof-probe');
 	}
 }
 

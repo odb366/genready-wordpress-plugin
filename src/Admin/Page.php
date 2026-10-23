@@ -9,6 +9,8 @@ namespace GenReady\Admin;
 
 use GenReady\Api\ApiError;
 use GenReady\Connection\TokenStore;
+use GenReady\Onboarding\AnonymousScans;
+use GenReady\Onboarding\PageUrl;
 use GenReady\Verification\MetaTag;
 
 defined( 'ABSPATH' ) || exit;
@@ -26,7 +28,7 @@ final class Page {
 	/** The tabs, in order. */
 	const TABS = array( 'overview', 'fixes', 'connection' );
 	/** Views that view() may render. */
-	const VIEWS = array( 'overview', 'fixes', 'connection' );
+	const VIEWS = array( 'overview', 'fixes', 'connection', 'start', 'scan-form', 'banner' );
 
 	/**
 	 * Token storage.
@@ -46,6 +48,12 @@ final class Page {
 	 * @var FixCards
 	 */
 	private $cards;
+	/**
+	 * Scans made without an account.
+	 *
+	 * @var AnonymousScans
+	 */
+	private $scans;
 	/**
 	 * The callback notice, read once per request. False until read.
 	 *
@@ -68,14 +76,16 @@ final class Page {
 	/**
 	 * Build the page.
 	 *
-	 * @param TokenStore $store   Token storage.
-	 * @param Reports    $reports Report and account data.
-	 * @param FixCards   $cards   Fix cards.
+	 * @param TokenStore     $store   Token storage.
+	 * @param Reports        $reports Report and account data.
+	 * @param FixCards       $cards   Fix cards.
+	 * @param AnonymousScans $scans   Scans made without an account.
 	 */
-	public function __construct( TokenStore $store, Reports $reports, FixCards $cards ) {
+	public function __construct( TokenStore $store, Reports $reports, FixCards $cards, AnonymousScans $scans ) {
 		$this->store   = $store;
 		$this->reports = $reports;
 		$this->cards   = $cards;
+		$this->scans   = $scans;
 	}
 
 	/**
@@ -128,20 +138,27 @@ final class Page {
 		wp_set_script_translations( 'genready-admin', 'genready' );
 		$notice    = $this->notice();
 		$connected = null !== $this->store->load();
-		$state     = $connected && 'overview' === $this->tab() ? $this->state() : array();
+		$overview  = 'overview' === $this->tab() && 'overview' === $this->view_name( 'overview', $connected );
+		$state     = $overview ? $this->state() : array();
 		$data      = array(
 			'ns'            => Rest::NS,
 			'connected'     => $connected,
-			'justConnected' => $connected && is_array( $notice ) && ! empty( $notice['ok'] ),
+			// An account notice means the site is verified already, so the verify and scan steps do not run.
+			'justConnected' => $connected && is_array( $notice ) && ! empty( $notice['ok'] ) && empty( $notice['account'] ),
 			'reportState'   => (string) ( $state['state'] ?? '' ),
+			'scanId'        => $connected ? '' : (string) ( $state['scan_id'] ?? '' ),
 			'overviewUrl'   => admin_url( 'options-general.php?page=' . self::SLUG ),
 		);
 		wp_add_inline_script( 'genready-admin', 'window.genreadyAdmin = ' . wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP ) . ';', 'before' );
+		if ( ! $connected ) {
+			wp_enqueue_script( 'genready-onboarding', plugins_url( 'assets/onboarding.js', GENREADY_FILE ), array( 'genready-admin', 'wp-api-fetch', 'wp-i18n' ), GENREADY_VERSION, true );
+			wp_set_script_translations( 'genready-onboarding', 'genready' );
+		}
 	}
 
 	/**
-	 * The one notice on the Plugins screen, until the site is connected or the
-	 * admin dismisses it.
+	 * The one notice on the Plugins screen, until a scan is stored, the site
+	 * connects, or the admin dismisses it.
 	 */
 	public function plugins_notice(): void {
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
@@ -150,7 +167,7 @@ final class Page {
 		}
 		printf(
 			'<div class="notice notice-info is-dismissible genready-notice"><p>%1$s <a href="%2$s">%3$s</a></p></div>',
-			esc_html__( 'Connect GenReady to see your AI readiness score.', 'genready' ),
+			esc_html__( 'See how AI search engines and agents read your site. No account needed.', 'genready' ),
 			esc_url( admin_url( 'options-general.php?page=' . self::SLUG ) ),
 			esc_html__( 'Open GenReady', 'genready' )
 		);
@@ -214,13 +231,21 @@ final class Page {
 	}
 
 	/**
-	 * The view for a tab. Overview without a connection shows the connect form.
+	 * The view for a tab. Without a connection the Overview is the connect form
+	 * while GenReady paused the onboarding, the first screen without a stored
+	 * scan, and the anonymous report with the banner otherwise.
 	 *
 	 * @param string $tab       Current tab.
 	 * @param bool   $connected Whether the site is connected.
 	 */
 	private function view_name( string $tab, bool $connected ): string {
-		return 'overview' === $tab && ! $connected ? 'connection' : $tab;
+		if ( 'overview' !== $tab || $connected ) {
+			return $tab;
+		}
+		if ( AnonymousScans::paused() ) {
+			return 'connection';
+		}
+		return array() === $this->scans->all() ? 'start' : 'overview';
 	}
 
 	/**
@@ -230,22 +255,38 @@ final class Page {
 	 * @param bool   $connected Whether the site is connected.
 	 */
 	private function view_data( string $tab, bool $connected ): array {
-		if ( 'overview' === $tab && $connected ) {
+		$name = $this->view_name( $tab, $connected );
+		if ( 'overview' === $name && $connected ) {
 			return array(
 				'connected' => true,
 				'state'     => $this->state(),
 			);
 		}
+		if ( 'start' === $name || 'overview' === $name ) {
+			return array(
+				'connected'   => false,
+				'home'        => home_url( '/' ),
+				'suggestions' => PageUrl::suggestions(),
+				'email'       => $this->user_email(),
+				'scans'       => $this->scans->all(),
+				'state'       => 'overview' === $name ? $this->state() : array( 'state' => 'none' ),
+				// The scripts loaded the only scan, GenReady said it is gone, and the list is empty now (spec 11).
+				'notice'      => 'start' === $name && 'gone' === ( $this->state['state'] ?? '' ) ? (string) ( $this->state['message'] ?? '' ) : '',
+			);
+		}
 		if ( 'fixes' === $tab ) {
 			return array(
-				'connected' => $connected,
-				'cards'     => $this->fix_cards(),
+				'connected'    => $connected,
+				// The Overview is the first screen (not paused, no stored scan), which has no account form.
+				'first_screen' => ! $connected && 'start' === $this->view_name( 'overview', false ),
+				'cards'        => $this->fix_cards(),
 			);
 		}
 		return array(
 			'connected' => $connected,
 			'account'   => $connected ? $this->reports->account() : null,
 			'tag_on'    => MetaTag::is_valid( get_option( MetaTag::OPTION ) ),
+			'paused'    => ! $connected && AnonymousScans::paused(),
 		);
 	}
 
@@ -266,7 +307,7 @@ final class Page {
 	 */
 	private function state(): array {
 		if ( null === $this->state ) {
-			$state       = $this->reports->state();
+			$state       = $this->reports->state( $this->requested_scan() );
 			$this->state = $state instanceof ApiError
 				? array(
 					'state'   => 'error',
@@ -278,9 +319,39 @@ final class Page {
 	}
 
 	/**
+	 * The scan the recent list asked for, or ''. Reports accepts only an ID from the plugin's own list.
+	 */
+	private function requested_scan(): string {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only choice between stored scans.
+		$id = isset( $_GET['scan'] ) && is_string( $_GET['scan'] ) ? sanitize_key( wp_unslash( $_GET['scan'] ) ) : '';
+		return 1 === preg_match( AnonymousScans::UUID, $id ) ? $id : '';
+	}
+
+	/**
+	 * The email of the current user for the banner, or ''.
+	 */
+	private function user_email(): string {
+		$user  = wp_get_current_user();
+		$email = is_object( $user ) && isset( $user->user_email ) ? (string) $user->user_email : '';
+		return is_email( $email ) ? $email : '';
+	}
+
+	/**
+	 * The line "GenReady's Terms and Privacy Policy apply." with its two links. Escaped.
+	 */
+	public static function terms(): string {
+		return sprintf(
+			/* translators: 1: link to the Terms, 2: link to the Privacy Policy. */
+			esc_html__( "GenReady's %1\$s and %2\$s apply.", 'genready' ),
+			'<a href="' . esc_url( 'https://genready.ai/terms' ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Terms', 'genready' ) . '</a>',
+			'<a href="' . esc_url( 'https://genready.ai/privacy' ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Privacy Policy', 'genready' ) . '</a>'
+		);
+	}
+
+	/**
 	 * The notice the OAuth callback left for this user. It is read once, then deleted.
 	 *
-	 * @return array|null array( 'ok' => true, 'notice'? => string ) or array( 'error' => string ), or null.
+	 * @return array|null array( 'ok' => true, 'notice'? => string, 'account'? => true, 'email'? => string ) or array( 'error' => string ), or null.
 	 */
 	private function notice(): ?array {
 		if ( false === $this->notice ) {
@@ -306,6 +377,20 @@ final class Page {
 			printf( '<div class="notice notice-error"><p>%s</p></div>', esc_html( $notice['error'] ) );
 			return;
 		}
+		if ( ! empty( $notice['ok'] ) && ! empty( $notice['account'] ) ) {
+			printf( '<div class="notice notice-success"><p>%s</p></div>', esc_html__( 'Your free GenReady account is ready. This site is connected and verified.', 'genready' ) );
+			printf(
+				'<div class="notice notice-info"><p>%s</p></div>',
+				esc_html(
+					sprintf(
+						/* translators: %s: the email address of the new account. */
+						__( 'GenReady sent a link to %s. Use it to set your password.', 'genready' ),
+						is_string( $notice['email'] ?? null ) ? $notice['email'] : ''
+					)
+				)
+			);
+			return;
+		}
 		if ( ! empty( $notice['ok'] ) ) {
 			printf( '<div class="notice notice-success"><p>%s</p></div>', esc_html__( 'GenReady is connected.', 'genready' ) );
 			if ( isset( $notice['notice'] ) && is_string( $notice['notice'] ) && '' !== $notice['notice'] ) {
@@ -320,6 +405,7 @@ final class Page {
 	private function notice_due(): bool {
 		return current_user_can( 'manage_options' )
 			&& null === $this->store->load()
-			&& ! get_user_meta( get_current_user_id(), Rest::NOTICE_DISMISSED, true );
+			&& ! get_user_meta( get_current_user_id(), Rest::NOTICE_DISMISSED, true )
+			&& array() === $this->scans->all();
 	}
 }

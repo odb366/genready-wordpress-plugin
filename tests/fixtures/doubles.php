@@ -36,6 +36,12 @@ class FakeClient extends Client {
 	public $requests = array();
 	/** @var callable|null Runs inside request(), before the answer, to simulate a racing request. */
 	public $on_request = null;
+	/** @var mixed Answer of call_public(): an array, an ApiError, or a Closure( $method, $path ). */
+	public $public_result = array();
+	/** @var array array( method, path, body, bearer, timeout ) of each call_public(). */
+	public $publics = array();
+	/** @var callable|null Runs inside call_public(), before the answer. */
+	public $on_public = null;
 
 	public function __construct() {
 	}
@@ -51,5 +57,13 @@ class FakeClient extends Client {
 			call_user_func( $this->on_request );
 		}
 		return $this->request_result;
+	}
+
+	public function call_public( string $method, string $path, ?array $body = null, ?string $bearer = null, int $timeout = 15 ) {
+		$this->publics[] = array( $method, $path, $body, $bearer, $timeout );
+		if ( null !== $this->on_public ) {
+			call_user_func( $this->on_public );
+		}
+		return $this->public_result instanceof \Closure ? call_user_func( $this->public_result, $method, $path ) : $this->public_result;
 	}
 }

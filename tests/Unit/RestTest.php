@@ -4,144 +4,16 @@ namespace GenReady\Tests\Unit;
 use Brain\Monkey;
 use GenReady\Admin\FixCards;
 use GenReady\Admin\Reports;
-use GenReady\Admin\Rest;
 use GenReady\Api\ApiError;
 use GenReady\Compat\SeoPlugins;
-use GenReady\Connection\ApiKey;
 use GenReady\Connection\OAuth;
-use GenReady\Connection\SiteSetup;
-use GenReady\Connection\TokenStore;
-use GenReady\Fixes\FixStore;
 use GenReady\Fixes\JsonLdFix;
 use GenReady\Fixes\LlmsTxtFix;
 use GenReady\Fixes\RobotsFix;
-use GenReady\Verification\MetaTag;
-use PHPUnit\Framework\TestCase;
 
-require_once dirname( __DIR__ ) . '/fixtures/doubles.php';
-require_once dirname( __DIR__ ) . '/fixtures/fix-doubles.php';
-require_once dirname( __DIR__ ) . '/fixtures/rest-doubles.php';
+require_once __DIR__ . '/RestTestCase.php';
 
-class RestTest extends TestCase {
-	const REPORT_ID = '11111111-2222-3333-4444-555555555555';
-	const BASE      = "User-agent: *\nDisallow: /wp-admin/\n";
-
-	/** @var array */
-	private $options = array();
-	/** @var array */
-	private $transients = array();
-	/** @var array */
-	private $user_meta = array();
-	/** @var TokenStore */
-	private $store;
-	/** @var FakeClient */
-	private $client;
-	/** @var MemoryFiles */
-	private $files;
-	/** @var FixStore */
-	private $fixes;
-	/** @var RecordingCaches */
-	private $caches;
-
-	protected function setUp(): void {
-		parent::setUp();
-		Monkey\setUp();
-		$this->options    = array( 'blog_public' => '1' );
-		$this->transients = array();
-		$this->user_meta  = array();
-		$opts             = &$this->options;
-		$trans            = &$this->transients;
-		$meta             = &$this->user_meta;
-		Monkey\Functions\when( 'wp_salt' )->justReturn( str_repeat( 's', 64 ) );
-		Monkey\Functions\when( 'get_option' )->alias( function ( $k, $d = false ) use ( &$opts ) { return $opts[ $k ] ?? $d; } );
-		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v ) use ( &$opts ) { $opts[ $k ] = $v; return true; } );
-		Monkey\Functions\when( 'delete_option' )->alias( function ( $k ) use ( &$opts ) { unset( $opts[ $k ] ); return true; } );
-		Monkey\Functions\when( 'get_transient' )->alias( function ( $k ) use ( &$trans ) { return $trans[ $k ] ?? false; } );
-		Monkey\Functions\when( 'set_transient' )->alias( function ( $k, $v ) use ( &$trans ) { $trans[ $k ] = $v; return true; } );
-		Monkey\Functions\when( 'delete_transient' )->alias( function ( $k ) use ( &$trans ) { unset( $trans[ $k ] ); return true; } );
-		Monkey\Functions\when( 'update_user_meta' )->alias( function ( $u, $k, $v ) use ( &$meta ) { $meta[ $u ][ $k ] = $v; return true; } );
-		Monkey\Functions\when( '__' )->returnArg( 1 );
-		Monkey\Functions\when( 'sanitize_text_field' )->alias( function ( $v ) { return trim( strip_tags( (string) $v ) ); } );
-		Monkey\Functions\when( 'sanitize_textarea_field' )->alias( function ( $v ) { return trim( strip_tags( (string) $v ) ); } );
-		Monkey\Functions\when( 'home_url' )->alias( function ( $path = '' ) { return 'https://example.com' . $path; } );
-		Monkey\Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
-		Monkey\Functions\when( 'get_current_user_id' )->justReturn( 7 );
-		Monkey\Functions\when( 'current_user_can' )->justReturn( true );
-		Monkey\Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
-		Monkey\Functions\when( 'rest_url' )->alias( function ( $p ) { return 'https://example.com/wp-json/' . $p; } );
-		Monkey\Functions\when( 'admin_url' )->alias( function ( $p ) { return 'https://example.com/wp-admin/' . $p; } );
-		Monkey\Functions\when( 'esc_url_raw' )->returnArg( 1 );
-		Monkey\Functions\when( 'wp_strip_all_tags' )->alias( 'strip_tags' );
-		Monkey\Functions\when( 'get_bloginfo' )->justReturn( 'Example' );
-		Monkey\Functions\when( '_n' )->alias( function ( $one, $many, $n ) { return 1 === $n ? $one : $many; } );
-		$this->store  = new TokenStore();
-		$this->client = new FakeClient();
-		$this->files  = new MemoryFiles();
-		$this->fixes  = new FixStore();
-		$this->caches = new RecordingCaches();
-	}
-
-	protected function tearDown(): void {
-		Monkey\tearDown();
-		parent::tearDown();
-	}
-
-	private function rest(): Rest {
-		$domain = function (): string {
-			$connection = $this->store->load();
-			return is_array( $connection ) ? (string) ( $connection['domain_id'] ?? '' ) : '';
-		};
-		$meta   = new MetaTag();
-		$seo    = new SeoPlugins( $this->files );
-		$robots = new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, $domain );
-		$llms   = new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, $seo, $domain );
-		$jsonld = new JsonLdFix( $this->fixes, $this->client, $this->caches, $seo, $domain );
-		return new Rest(
-			$this->store,
-			$this->client,
-			new OAuth( $this->store, $this->client ),
-			new ApiKey( $this->store, $this->client ),
-			new SiteSetup( $this->store, $this->client, $meta, $this->caches ),
-			$meta,
-			$this->caches,
-			new Reports( $this->store, $this->client ),
-			new FixCards( $this->fixes, $robots, $llms, $jsonld, $this->files )
-		);
-	}
-
-	private function connect(): void {
-		$this->store->save(
-			array(
-				'method'    => 'api_key',
-				'api_key'   => 'gr_live_abcdefghijklmnop',
-				'domain_id' => 'd1',
-			)
-		);
-	}
-
-	private function robots_merge( string $content ): array {
-		return array(
-			'content'         => $content,
-			'diff'            => "--- a\n+++ b\n+User-agent: GPTBot",
-			'summary'         => array( 'Allows GPTBot.' ),
-			'notes'           => array(),
-			'changed'         => true,
-			'needsHumanInput' => false,
-			'baseSha256'      => hash( 'sha256', self::BASE ),
-			'live'            => null,
-		);
-	}
-
-	private function fix( Rest $rest, string $kind, string $action, array $params = array() ) {
-		return $rest->fix( new FakeRequest( array_merge( array( 'kind' => $kind, 'action' => $action ), $params ) ) );
-	}
-
-	private function assert_error( $result, string $message, int $status = 400 ): void {
-		$this->assertInstanceOf( \WP_Error::class, $result );
-		$this->assertSame( $message, $result->get_error_message() );
-		$this->assertSame( $status, $result->get_error_data()['status'] );
-	}
-
+class RestTest extends RestTestCase {
 	public function test_every_admin_route_requires_manage_options(): void {
 		$routes = array();
 		Monkey\Functions\when( 'register_rest_route' )->alias( function ( $ns, $path, $args ) use ( &$routes ) { $routes[ $path ] = $args; } );
@@ -326,12 +198,13 @@ class RestTest extends TestCase {
 
 	public function test_report_404_clears_last_report_id_without_site_removed_text(): void {
 		$this->connect();
-		$this->options['genready_settings']        = array( 'last_report_id' => self::REPORT_ID );
+		$this->options['genready_settings']        = array( 'last_report_id' => self::REPORT_ID, 'last_report_url' => 'https://example.com/a/' );
 		$this->transients['genready_report_cache'] = array( 'id' => 'other' );
 		$this->client->request_result              = new ApiError( 404, 'NOT_FOUND', 'Report not found' );
 		$result                                    = $this->rest()->report( new FakeRequest() );
 		$this->assertSame( array( 'state' => 'none' ), $result );
 		$this->assertArrayNotHasKey( 'last_report_id', $this->options['genready_settings'] );
+		$this->assertArrayNotHasKey( 'last_report_url', $this->options['genready_settings'] );
 		$this->assertArrayNotHasKey( 'genready_report_cache', $this->transients );
 		$this->assertStringNotContainsString( 'removed', (string) json_encode( $result ) );
 		$this->assertSame( array( 'GET', '/api/v1/reports/' . self::REPORT_ID, null ), $this->client->requests[0] );
@@ -587,17 +460,6 @@ class RestTest extends TestCase {
 	}
 
 	// Fix round A.
-
-	private function cards(): FixCards {
-		$seo = new SeoPlugins( $this->files );
-		return new FixCards(
-			$this->fixes,
-			new RobotsFix( $this->fixes, $this->files, $this->client, $this->caches, 'd1' ),
-			new LlmsTxtFix( $this->fixes, $this->files, $this->client, $this->caches, $seo, 'd1' ),
-			new JsonLdFix( $this->fixes, $this->client, $this->caches, $seo, 'd1' ),
-			$this->files
-		);
-	}
 
 	public function test_sub_site_cards_show_the_network_refusal_and_no_file_action(): void {
 		$this->files->may = false;

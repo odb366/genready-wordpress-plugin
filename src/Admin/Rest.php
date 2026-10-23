@@ -15,6 +15,9 @@ use GenReady\Connection\OAuth;
 use GenReady\Connection\SiteSetup;
 use GenReady\Connection\TokenStore;
 use GenReady\Fixes\JsonLdFix;
+use GenReady\Onboarding\AccountCreator;
+use GenReady\Onboarding\AnonymousScans;
+use GenReady\Onboarding\RestArgs;
 use GenReady\Support\Text;
 use GenReady\Verification\MetaTag;
 
@@ -93,21 +96,35 @@ final class Rest {
 	 * @var FixCards
 	 */
 	private $cards;
+	/**
+	 * Scans made without an account.
+	 *
+	 * @var AnonymousScans
+	 */
+	private $scans;
+	/**
+	 * "Create my free account".
+	 *
+	 * @var AccountCreator
+	 */
+	private $account;
 
 	/**
 	 * Build the routes.
 	 *
-	 * @param TokenStore $store   Token storage.
-	 * @param Client     $client  API client.
-	 * @param OAuth      $oauth   OAuth connector.
-	 * @param ApiKey     $api_key API key connector.
-	 * @param SiteSetup  $setup   Verification and scans.
-	 * @param MetaTag    $meta    Verification meta tag.
-	 * @param Caches     $caches  Page caches.
-	 * @param Reports    $reports Report and account data.
-	 * @param FixCards   $cards   Fix cards.
+	 * @param TokenStore     $store   Token storage.
+	 * @param Client         $client  API client.
+	 * @param OAuth          $oauth   OAuth connector.
+	 * @param ApiKey         $api_key API key connector.
+	 * @param SiteSetup      $setup   Verification and scans.
+	 * @param MetaTag        $meta    Verification meta tag.
+	 * @param Caches         $caches  Page caches.
+	 * @param Reports        $reports Report and account data.
+	 * @param FixCards       $cards   Fix cards.
+	 * @param AnonymousScans $scans   Scans made without an account.
+	 * @param AccountCreator $account "Create my free account".
 	 */
-	public function __construct( TokenStore $store, Client $client, OAuth $oauth, ApiKey $api_key, SiteSetup $setup, MetaTag $meta, Caches $caches, Reports $reports, FixCards $cards ) {
+	public function __construct( TokenStore $store, Client $client, OAuth $oauth, ApiKey $api_key, SiteSetup $setup, MetaTag $meta, Caches $caches, Reports $reports, FixCards $cards, AnonymousScans $scans, AccountCreator $account ) {
 		$this->store   = $store;
 		$this->client  = $client;
 		$this->oauth   = $oauth;
@@ -117,6 +134,8 @@ final class Rest {
 		$this->caches  = $caches;
 		$this->reports = $reports;
 		$this->cards   = $cards;
+		$this->scans   = $scans;
+		$this->account = $account;
 	}
 
 	/**
@@ -151,8 +170,44 @@ final class Rest {
 		);
 		$this->route( '/disconnect', 'POST', 'disconnect' );
 		$this->route( '/verify', 'POST', 'verify' );
-		$this->route( '/scan', 'POST', 'scan' );
-		$this->route( '/report', 'GET', 'report' );
+		$this->route(
+			'/scan',
+			'POST',
+			'scan',
+			array(
+				'url' => array(
+					'type'              => 'string',
+					'default'           => '',
+					'sanitize_callback' => array( RestArgs::class, 'sanitize_page_url' ),
+					'validate_callback' => array( RestArgs::class, 'validate_page_url' ),
+				),
+			)
+		);
+		$this->route(
+			'/report',
+			'GET',
+			'report',
+			array(
+				'scan' => array(
+					'type'              => 'string',
+					'default'           => '',
+					'validate_callback' => array( RestArgs::class, 'validate_scan_id' ),
+				),
+			)
+		);
+		$this->route(
+			'/account',
+			'POST',
+			'account',
+			array(
+				'email' => array(
+					'type'              => 'string',
+					'required'          => true,
+					'sanitize_callback' => 'sanitize_text_field',
+					'validate_callback' => array( RestArgs::class, 'validate_email_text' ),
+				),
+			)
+		);
 		$this->route( '/verification-tag/remove', 'POST', 'remove_tag' );
 		$this->route( '/notice/dismiss', 'POST', 'dismiss_notice' );
 		$this->route( '/fixes/(?P<kind>robots|llms)/download', 'POST', 'download' );
@@ -203,6 +258,7 @@ final class Rest {
 			return $this->failure( $result );
 		}
 		$this->reports->forget_account();
+		$this->scans->clear(); // A new connection ends the scans without an account (spec R20).
 		return array( 'ok' => true );
 	}
 
@@ -216,6 +272,7 @@ final class Rest {
 		$this->oauth->revoke();
 		$this->reports->forget();
 		$this->reports->forget_account();
+		$this->scans->clear();
 		foreach ( FixCards::KINDS as $kind ) {
 			delete_transient( $this->preview_key( $kind ) );
 		}
@@ -244,37 +301,65 @@ final class Rest {
 	}
 
 	/**
-	 * Start a scan of the home page.
+	 * Start a scan of a page. With a connection it uses the key (1 API credit).
+	 * Without one it starts a scan without an account.
 	 *
-	 * @param \WP_REST_Request $request Request.
-	 * @return array|\WP_Error array( 'report_id' => string ).
+	 * @param \WP_REST_Request $request Request with an optional url.
+	 * @return array|\WP_Error array( 'report_id' => string ) or array( 'scan_id' => string ).
 	 */
-	public function scan( $request ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- REST callback signature.
-		if ( null === $this->store->load() ) {
-			return $this->reconnect();
+	public function scan( $request ) {
+		$url = (string) $request->get_param( 'url' );
+		if ( RestArgs::NOT_A_PAGE === $url ) {
+			// Not empty, but not an http or https address: never the home page instead (spec 4.1).
+			return $this->error( __( 'Enter an address on this site.', 'genready' ), 'NOT_THIS_SITE' );
 		}
-		$result = $this->setup->scan();
+		if ( null !== $this->store->load() ) {
+			$result = $this->setup->scan( $url );
+			if ( isset( $result['error'] ) ) {
+				return $this->failure( $result );
+			}
+			return array( 'report_id' => (string) $result['report_id'] );
+		}
+		$result = $this->scans->start( '' === $url ? home_url( '/' ) : $url );
 		if ( isset( $result['error'] ) ) {
 			return $this->failure( $result );
 		}
-		return array( 'report_id' => (string) $result['report_id'] );
+		return array( 'scan_id' => (string) $result['scan_id'] );
 	}
 
 	/**
-	 * The state of the last scan, for the page's poll.
+	 * The state of the last scan, or of a stored scan without a connection, for the page's poll.
 	 *
-	 * @param \WP_REST_Request $request Request.
+	 * @param \WP_REST_Request $request Request with an optional scan ID.
 	 * @return array|\WP_Error See Reports::state().
 	 */
-	public function report( $request ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- REST callback signature.
+	public function report( $request ) {
+		if ( null === $this->store->load() ) {
+			// The stored scan IDs are lower case (AnonymousScans::remember()).
+			$state = $this->reports->state( strtolower( (string) $request->get_param( 'scan' ) ) );
+			return $state instanceof ApiError ? $this->api_error( $state ) : $state;
+		}
 		if ( '' === $this->reports->last_report_id() ) {
 			return array( 'state' => 'none' );
 		}
-		if ( null === $this->store->load() ) {
-			return $this->reconnect();
-		}
 		$state = $this->reports->state();
 		return $state instanceof ApiError ? $this->api_error( $state ) : $state;
+	}
+
+	/**
+	 * "Create my free account".
+	 *
+	 * @param \WP_REST_Request $request Request with the email.
+	 * @return array|\WP_Error array( 'ok' => true ).
+	 */
+	public function account( $request ) {
+		$email  = $request->get_param( 'email' );
+		$result = $this->account->create( is_string( $email ) ? $email : '' );
+		if ( isset( $result['error'] ) ) {
+			return $this->failure( $result );
+		}
+		$this->reports->forget_account();
+		return array( 'ok' => true );
 	}
 
 	/**

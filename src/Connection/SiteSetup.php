@@ -10,6 +10,7 @@ namespace GenReady\Connection;
 use GenReady\Api\ApiError;
 use GenReady\Api\Client;
 use GenReady\Compat\Caches;
+use GenReady\Onboarding\PageUrl;
 use GenReady\Verification\MetaTag;
 
 defined( 'ABSPATH' ) || exit;
@@ -96,17 +97,19 @@ final class SiteSetup {
 	}
 
 	/**
-	 * Start a full scan of the home page and remember the report.
+	 * Start a full scan of a page and remember the report. It uses 1 API credit.
 	 *
+	 * @param string $url A page on this site. Empty or another site means the home page.
 	 * @return array array( 'report_id' => string, 'estimated_seconds' => int ) or array( 'error' => string ). An
 	 *               error from the API also has 'code' and 'status'.
 	 */
-	public function scan(): array {
+	public function scan( string $url = '' ): array {
+		$target = '' !== $url && PageUrl::is_on_site( $url ) ? $url : home_url( '/' );
 		$result = $this->client->request(
 			'POST',
 			'/api/v1/analyze',
 			array(
-				'url'   => home_url( '/' ),
+				'url'   => $target,
 				'scope' => 'full',
 			)
 		);
@@ -117,9 +120,10 @@ final class SiteSetup {
 		if ( ! is_string( $report_id ) || 1 !== preg_match( '/^[A-Za-z0-9-]{1,64}$/', $report_id ) ) {
 			return array( 'error' => __( 'GenReady could not do this. Try again.', 'genready' ) );
 		}
-		$settings                   = get_option( self::SETTINGS );
-		$settings                   = is_array( $settings ) ? $settings : array();
-		$settings['last_report_id'] = $report_id;
+		$settings                    = get_option( self::SETTINGS );
+		$settings                    = is_array( $settings ) ? $settings : array();
+		$settings['last_report_id']  = $report_id;
+		$settings['last_report_url'] = $target; // The JSON-LD fix target after the report cache expires.
 		update_option( self::SETTINGS, $settings, false );
 		delete_transient( self::REPORT_CACHE );
 		$seconds = $result['estimatedSeconds'] ?? 0;

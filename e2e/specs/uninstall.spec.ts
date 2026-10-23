@@ -15,6 +15,10 @@ test('delete the plugin on the Plugins screen: options gone, robots.txt restored
 	await expect(robots.state).toHaveText('Applied');
 
 	const tools = await helper(page);
+	// The onboarding options and the pause transient go too (spec 9.3).
+	await tools.storeScan('11111111-1111-4111-8111-111111111111', 'http://127.0.0.1:9411/', 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ');
+	await tools.setOption('genready_proof', { id: 'a'.repeat(32), secret: 'b'.repeat(64), created: 1 });
+	await tools.setOption('_transient_genready_anon_off', 1);
 	expect(await tools.readFile('robots.txt')).toContain('Content-Signal:');
 	expect(await tools.options('genready')).toEqual(expect.arrayContaining(['genready_connection', 'genready_fix_robots', 'genready_settings']));
 

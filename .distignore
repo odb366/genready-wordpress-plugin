@@ -11,3 +11,4 @@ node_modules
 .distignore
 .superpowers
 .phpunit.result.cache
+.worktrees

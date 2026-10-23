@@ -219,4 +219,12 @@ class UninstallTest extends TestCase {
 		$this->assertSame( 'ORIG', $this->files->read( 'robots.txt' ) );
 		$this->assertFalse( $this->files->exists( 'llms.txt' ) );
 	}
+
+	public function test_uninstall_deletes_the_onboarding_options(): void {
+		$this->options['genready_anonymous_scans'] = array( array( 'id' => 'x' ) );
+		$this->options['genready_proof']           = array( 'id' => 'y' );
+		$this->uninstaller()->run();
+		$this->assertArrayNotHasKey( 'genready_anonymous_scans', $this->options );
+		$this->assertArrayNotHasKey( 'genready_proof', $this->options );
+	}
 }

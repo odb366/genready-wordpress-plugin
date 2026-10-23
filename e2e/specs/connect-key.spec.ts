@@ -26,11 +26,12 @@ test('connect with a Pro key: score, AI view, robots.txt apply and undo', async 
 	await connectWithKey(page, account('pro').apiKey);
 
 	// Verify: the seeded domain is verified ("already verified"); without it the local server cannot reach
-	// 127.0.0.1 and answers not verified with a detail. The scan of 127.0.0.1 always fails (SSRF guard).
+	// 127.0.0.1 and answers not verified with a detail. The scan of 127.0.0.1 always fails (SSRF guard):
+	// the server answers 400 INVALID_URL, and the plugin shows the err.public text for it.
 	const setup = page.locator('#genready-setup');
 	await expect(setup.locator('[data-genready-step="verify"]')).toHaveText(VERIFY_SHOWN);
 	console.log(`verify step: ${await setup.locator('[data-genready-step="verify"]').innerText()}`);
-	await expect(setup.locator('[data-genready-step="scan"].genready-result--error')).toContainText('GenReady could not do this. Try again.');
+	await expect(setup.locator('[data-genready-step="scan"].genready-result--error')).toContainText('GenReady can check only pages that anyone can open on the internet.');
 
 	// Overview from the seeded report.
 	await openGenReady(page);
@@ -93,24 +94,29 @@ test('connect with a Pro key: score, AI view, robots.txt apply and undo', async 
 	expect(restored).not.toContain('Content-Signal');
 	expect(restored).toBe(base);
 
-	// JSON-LD without an SEO plugin: the server answer has no `existing` yet, so apply refuses and nothing is printed.
+	// JSON-LD without an SEO plugin: the server answers `existing` (server 35cc385), and the default theme
+	// prints no JSON-LD, so apply prints GenReady's one node and undo removes it.
 	const jsonld = card(page, 'jsonld');
-	await jsonld.button('preview').click();
-	await expect(jsonld.result).not.toBeEmpty();
-	if (await jsonld.button('apply').isVisible()) {
-		await jsonld.root.locator('[data-genready-prop]').evaluateAll((inputs) => {
-			for (const input of inputs as HTMLInputElement[]) {
-				const prop = input.getAttribute('data-genready-prop');
-				input.value = prop === 'logo' ? 'http://127.0.0.1:9411/logo.png' : prop?.startsWith('date') ? '2026-10-01T10:00:00+00:00' : 'GenReady e2e';
-			}
-		});
-		await jsonld.button('apply').click();
-	}
-	await expect(jsonld.result).toContainText('GenReady needs a newer server answer to check this page for existing markup. Try again later.');
 	await expect(jsonld.state).toHaveText('Not applied');
-	const home = await (await page.request.get('/')).text();
-	// The default theme prints no JSON-LD, so any block would be GenReady's.
-	expect(jsonLdNodes(home)).toEqual([]);
+	expect(jsonLdNodes(await (await page.request.get('/')).text())).toEqual([]);
+	await jsonld.button('preview').click();
+	await expect(jsonld.result).toContainText('Check the preview, then click Apply.');
+	await jsonld.root.locator('[data-genready-prop]').evaluateAll((inputs) => {
+		for (const input of inputs as HTMLInputElement[]) {
+			const prop = input.getAttribute('data-genready-prop');
+			input.value = prop === 'logo' ? 'http://127.0.0.1:9411/logo.png' : prop?.startsWith('date') ? '2026-10-01T10:00:00+00:00' : 'GenReady e2e';
+		}
+	});
+	await jsonld.button('apply').click();
+	await expect(jsonld.result).toContainText('Applied.');
+	await expect(jsonld.state).toHaveText('Applied');
+	const printed = jsonLdNodes(await (await page.request.get('/')).text());
+	expect(printed, JSON.stringify(printed.map((node) => node['@type']))).toHaveLength(1);
+
+	await jsonld.button('undo').click();
+	await expect(jsonld.result).toContainText('Undone.');
+	await expect(jsonld.state).toHaveText('Not applied');
+	expect(jsonLdNodes(await (await page.request.get('/')).text())).toEqual([]);
 
 	// The refresh lock works on the Playground SQLite database.
 	const probe = await (await helper(page)).post('/lock-probe');
