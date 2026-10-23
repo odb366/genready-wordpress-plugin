@@ -41,7 +41,7 @@ if ( ! $connected ) {
 						<?php else : ?>
 							<a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready&scan=' . $scan['id'] ) ); ?>"><?php echo esc_html( PageUrl::label( (string) $scan['url'] ) ); ?></a>
 						<?php endif; ?>
-						<span class="genready-recent__date"><?php echo esc_html( date_i18n( (string) get_option( 'date_format' ), (int) $scan['at'] ) ); ?></span>
+						<span class="genready-recent__date"><?php echo esc_html( wp_date( (string) get_option( 'date_format' ), (int) $scan['at'] ) ); ?></span>
 					</li>
 				<?php endforeach; ?>
 			</ul>
@@ -55,7 +55,7 @@ if ( null === $report ) :
 	<section class="genready-card genready-empty" data-genready-state="<?php echo esc_attr( (string) ( $state['state'] ?? 'none' ) ); ?>">
 		<?php if ( 'pending' === ( $state['state'] ?? '' ) ) : ?>
 			<h2><?php esc_html_e( 'The scan is running', 'genready' ); ?></h2>
-			<p><?php echo esc_html( $connected ? __( 'GenReady is scanning your home page. This page updates when the report is ready.', 'genready' ) : __( 'Scanning this page. This takes about 30 seconds.', 'genready' ) ); ?></p>
+			<p><?php esc_html_e( 'Scanning this page. This takes about 30 seconds.', 'genready' ); ?></p>
 		<?php elseif ( in_array( $state['state'] ?? '', array( 'failed', 'error', 'gone' ), true ) ) : ?>
 			<h2><?php esc_html_e( 'No report to show', 'genready' ); ?></h2>
 			<div class="notice notice-error inline"><p><?php echo esc_html( (string) ( $state['message'] ?? '' ) ); ?></p></div>
@@ -205,7 +205,7 @@ $sections   = array(
 			<span class="genready-footer__date">
 				<?php
 				/* translators: %s: date of the scan. */
-				echo esc_html( sprintf( __( 'Scanned on %s', 'genready' ), date_i18n( (string) get_option( 'date_format' ), (int) $report['scanned_at'] ) ) );
+				echo esc_html( sprintf( __( 'Scanned on %s', 'genready' ), wp_date( (string) get_option( 'date_format' ), (int) $report['scanned_at'] ) ) );
 				?>
 			</span>
 		<?php endif; ?>

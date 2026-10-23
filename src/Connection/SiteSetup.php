@@ -104,11 +104,12 @@ final class SiteSetup {
 	 *               error from the API also has 'code' and 'status'.
 	 */
 	public function scan( string $url = '' ): array {
+		$target = '' !== $url && PageUrl::is_on_site( $url ) ? $url : home_url( '/' );
 		$result = $this->client->request(
 			'POST',
 			'/api/v1/analyze',
 			array(
-				'url'   => '' !== $url && PageUrl::is_on_site( $url ) ? $url : home_url( '/' ),
+				'url'   => $target,
 				'scope' => 'full',
 			)
 		);
@@ -119,9 +120,10 @@ final class SiteSetup {
 		if ( ! is_string( $report_id ) || 1 !== preg_match( '/^[A-Za-z0-9-]{1,64}$/', $report_id ) ) {
 			return array( 'error' => __( 'GenReady could not do this. Try again.', 'genready' ) );
 		}
-		$settings                   = get_option( self::SETTINGS );
-		$settings                   = is_array( $settings ) ? $settings : array();
-		$settings['last_report_id'] = $report_id;
+		$settings                    = get_option( self::SETTINGS );
+		$settings                    = is_array( $settings ) ? $settings : array();
+		$settings['last_report_id']  = $report_id;
+		$settings['last_report_url'] = $target; // The JSON-LD fix target after the report cache expires.
 		update_option( self::SETTINGS, $settings, false );
 		delete_transient( self::REPORT_CACHE );
 		$seconds = $result['estimatedSeconds'] ?? 0;

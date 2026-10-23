@@ -28,7 +28,13 @@ class ViewsTest extends TestCase {
 		Monkey\Functions\when( '__' )->returnArg( 1 );
 		Monkey\Functions\when( '_n' )->alias( function ( $one, $many, $n ) { return 1 === $n ? $one : $many; } );
 		Monkey\Functions\when( 'admin_url' )->alias( function ( $p ) { return 'https://example.com/wp-admin/' . $p; } );
-		Monkey\Functions\when( 'date_i18n' )->alias( function ( $f, $t ) { return gmdate( 'Y-m-d', $t ); } );
+		Monkey\Functions\when( 'wp_date' )->alias(
+			function ( $format, $time ) {
+				$date = new \DateTime( '@' . $time );
+				$date->setTimezone( new \DateTimeZone( 'Europe/Sofia' ) ); // The site's time zone.
+				return $date->format( $format );
+			}
+		);
 		Monkey\Functions\when( 'get_option' )->justReturn( 'Y-m-d' );
 		Monkey\Functions\when( 'checked' )->alias( function ( $a, $b = true, $echo = true ) { $out = $a === $b ? ' checked="checked"' : ''; if ( $echo ) { echo $out; } return $out; } );
 		Monkey\Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
@@ -99,6 +105,22 @@ class ViewsTest extends TestCase {
 			);
 			$this->assert_safe( $html );
 		}
+	}
+
+	// Spec delta 11: "Scan again" can scan any page, so the connected text names no page.
+	public function test_a_running_scan_has_the_same_text_with_and_without_a_connection(): void {
+		foreach ( array( true, false ) as $connected ) {
+			$html = Page::view( 'overview', array( 'connected' => $connected, 'state' => array( 'state' => 'pending' ) ) );
+			$this->assertStringContainsString( '<p>Scanning this page. This takes about 30 seconds.</p>', $html );
+			$this->assertStringNotContainsString( 'home page', $html );
+		}
+	}
+
+	// PHP L1: wp_date() shows the date in the site's time zone; date_i18n() showed the UTC date.
+	public function test_the_scan_date_is_in_the_site_time_zone(): void {
+		$report = Reports::summarize( report_fixture( array( 'completedAt' => '2026-10-08T22:30:00.000Z' ) ) );
+		$html   = Page::view( 'overview', array( 'connected' => true, 'state' => array( 'state' => 'complete', 'report' => $report ) ) );
+		$this->assertStringContainsString( 'Scanned on 2026-10-09', $html, '01:30 in Sofia' );
 	}
 
 	public function test_fixes_view_escapes_card_text(): void {
@@ -261,7 +283,7 @@ class ViewsTest extends TestCase {
 	}
 
 	public function test_the_scan_form_escapes_the_suggestions(): void {
-		$html = Page::view( 'scan-form', array( 'home' => 'https://example.com/', 'suggestions' => array( 'https://example.com/a"><script>alert(1)</script>' ) ) );
+		$html = Page::view( 'scan-form', array( 'home' => 'https://example.com/', 'suggestions' => array( 'https://example.com/a"><script>alert(1)</script>' ), 'notice' => self::XSS ) );
 		$this->assert_safe( $html );
 		$this->assertStringContainsString( 'list="genready-pages"', $html );
 		$this->assertStringContainsString( 'novalidate', $html );

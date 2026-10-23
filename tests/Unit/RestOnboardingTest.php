@@ -208,6 +208,26 @@ class RestOnboardingTest extends RestTestCase {
 		}
 	}
 
+	// PHP M2: the report cache lives 5 minutes; the JSON-LD fix must still target the adopted page after that.
+	public function test_after_the_cache_expired_the_jsonld_preview_targets_the_adopted_page(): void {
+		$this->scans()->remember( self::SCAN, 'https://example.com/', self::TOKEN );
+		$this->scans()->remember( self::SCAN2, 'https://example.com/pricing/', self::TOKEN );
+		$this->client->public_result = array(
+			'apiKey'            => 'gr_live_' . str_repeat( 'k', 32 ),
+			'domainId'          => '33333333-3333-4333-8333-333333333333',
+			'verificationToken' => str_repeat( 'f', 48 ),
+			'adoptedScanIds'    => array( self::SCAN, self::SCAN2 ),
+		);
+		$this->rest()->account( new FakeRequest( array( 'email' => 'owner@example.com' ) ) );
+		unset( $this->transients['genready_report_cache'] ); // Expired.
+		$targets = array();
+		Monkey\Functions\when( 'url_to_postid' )->alias( function ( $url ) use ( &$targets ) { $targets[] = $url; return 0; } );
+		$this->fix( $this->rest(), 'jsonld', 'preview' );
+		$this->assertSame( 'https://example.com/pricing/', $targets[0] );
+		$this->assertNotContains( 'https://example.com/', $targets, 'not the home page' );
+		$this->assertSame( array(), $this->client->requests, 'no JSON-LD for the home page' );
+	}
+
 	public function test_connect_key_and_disconnect_clear_the_anonymous_scans(): void {
 		$this->scans()->remember( self::SCAN, 'https://example.com/', self::TOKEN );
 		$this->client->request_result = array( 'domain' => array( 'id' => 'd1', 'verificationToken' => 'tok12345678' ) );

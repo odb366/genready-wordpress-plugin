@@ -3,7 +3,7 @@
  * Overview without a connection and without a stored scan: the first screen (spec 4.1).
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: home (string), suggestions (string[]).
+ * $view: home (string), suggestions (string[]), notice (string: err.gone when the only stored scan is gone).
  *
  * @package GenReady
  */

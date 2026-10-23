@@ -5,6 +5,7 @@ use Brain\Monkey;
 use GenReady\Admin\FixCards;
 use GenReady\Admin\Page;
 use GenReady\Admin\Reports;
+use GenReady\Api\ApiError;
 use GenReady\Compat\SeoPlugins;
 use GenReady\Connection\TokenStore;
 use GenReady\Fixes\FixStore;
@@ -100,7 +101,7 @@ class PageTest extends TestCase {
 	}
 
 	/** Stubs for render(): the escaping of ViewsTest and the WordPress data the views read. */
-	private function render( array $get = array() ): string {
+	private function render( array $get = array(), bool $enqueue_first = false ): string {
 		$_GET   = $get;
 		$escape = function ( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); };
 		foreach ( array( 'esc_html', 'esc_attr', 'esc_textarea', 'esc_html__', 'esc_attr__' ) as $fn ) {
@@ -120,11 +121,22 @@ class PageTest extends TestCase {
 		Monkey\Functions\when( 'get_permalink' )->justReturn( 'https://example.com/sample-page/' );
 		Monkey\Functions\when( 'wp_get_current_user' )->justReturn( (object) array( 'user_email' => 'admin@example.com' ) );
 		Monkey\Functions\when( 'is_email' )->alias( function ( $e ) { return false !== filter_var( $e, FILTER_VALIDATE_EMAIL ) ? $e : false; } );
-		Monkey\Functions\when( 'date_i18n' )->alias( function ( $f, $t ) { return gmdate( 'Y-m-d', $t ); } );
+		Monkey\Functions\when( 'wp_date' )->alias(
+			function ( $format, $time ) {
+				$date = new \DateTime( '@' . $time );
+				$date->setTimezone( new \DateTimeZone( 'Europe/Sofia' ) ); // The site's time zone.
+				return $date->format( $format );
+			}
+		);
+		$this->options['date_format']         = 'Y-m-d';
 		Monkey\Functions\when( 'wp_strip_all_tags' )->alias( 'strip_tags' );
 		$this->options['permalink_structure'] = '/%postname%/';
+		$page = $this->page();
+		if ( $enqueue_first ) {
+			$page->enqueue( 'settings_page_genready' ); // WordPress runs admin_enqueue_scripts before the page callback.
+		}
 		ob_start();
-		$this->page()->render();
+		$page->render();
 		return (string) ob_get_clean();
 	}
 
@@ -278,6 +290,35 @@ class PageTest extends TestCase {
 		$this->assertStringContainsString( '<span aria-current="true">Home page</span>', $html );
 		$this->assertStringContainsString( 'options-general.php?page=genready&amp;scan=' . self::SCAN2 . '">/pricing/</a>', $html );
 		$this->assertSame( '/api/v1/wp/scans/' . self::SCAN1, $this->client->publics[0][1] );
+	}
+
+	// PHP L1: 00:30 in Sofia is the day before in UTC; the list shows the site's date.
+	public function test_the_recent_list_dates_are_in_the_site_time_zone(): void {
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->scans()->remember( self::SCAN2, 'https://example.com/pricing/', self::TOKEN );
+		$at = ( new \DateTime( 'today 00:30', new \DateTimeZone( 'Europe/Sofia' ) ) )->getTimestamp();
+		$this->options[ AnonymousScans::OPTION ][0]['at'] = $at;
+		$this->client->public_result                      = report_fixture( array( 'reportId' => self::SCAN2 ) );
+		$html                                             = $this->render();
+		$site_date                                        = ( new \DateTime( '@' . $at ) )->setTimezone( new \DateTimeZone( 'Europe/Sofia' ) )->format( 'Y-m-d' );
+		$this->assertNotSame( gmdate( 'Y-m-d', $at ), $site_date );
+		$this->assertStringContainsString( '<span class="genready-recent__date">' . $site_date . '</span>', $html );
+	}
+
+	// Spec 11 err.gone: the 404 empties the list while the scripts load, so render() shows the first screen.
+	public function test_the_first_screen_says_when_the_only_scan_is_gone(): void {
+		Monkey\Functions\when( 'get_user_meta' )->justReturn( '1' );
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->client->public_result = new ApiError( 404, 'NOT_FOUND', 'Scan not found' );
+		$html                        = $this->render( array(), true );
+		$this->assertStringContainsString( '<h2 id="genready-start-title">', $html );
+		$this->assertMatchesRegularExpression( '#<div id="genready-scan-result" class="genready-result genready-result--error"[^>]*><p>This scan is no longer available\. Check the page again\.</p></div>#', $html );
+		$this->assertCount( 1, $this->client->publics, 'one call, while the scripts load' );
+	}
+
+	public function test_the_first_screen_has_an_empty_result_without_a_gone_scan(): void {
+		$html = $this->render( array(), true );
+		$this->assertStringContainsString( '<div id="genready-scan-result" class="genready-result" role="status" aria-live="polite" tabindex="-1"></div>', $html );
 	}
 
 	public function test_connect_only_while_the_onboarding_is_paused(): void {

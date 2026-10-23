@@ -82,12 +82,19 @@ class Reports {
 	}
 
 	/**
-	 * The URL of the cached report, or null.
+	 * The URL of the cached report, else the page of the last scan, or null.
+	 * The cache lives 5 minutes; the stored URL keeps the JSON-LD fix on the
+	 * scanned page after that.
 	 */
 	public function cached_url(): ?string {
 		$cache = get_transient( SiteSetup::REPORT_CACHE );
 		$url   = is_array( $cache ) && is_array( $cache['report'] ?? null ) ? ( $cache['report']['url'] ?? null ) : null;
-		return is_string( $url ) && '' !== $url ? $url : null;
+		if ( is_string( $url ) && '' !== $url ) {
+			return $url;
+		}
+		$settings = get_option( SiteSetup::SETTINGS );
+		$stored   = is_array( $settings ) ? ( $settings['last_report_url'] ?? null ) : null;
+		return is_string( $stored ) && '' !== $stored ? $stored : null;
 	}
 
 	/**
@@ -191,8 +198,8 @@ class Reports {
 	 */
 	public function forget(): void {
 		$settings = get_option( SiteSetup::SETTINGS );
-		if ( is_array( $settings ) && array_key_exists( 'last_report_id', $settings ) ) {
-			unset( $settings['last_report_id'] );
+		if ( is_array( $settings ) && ( array_key_exists( 'last_report_id', $settings ) || array_key_exists( 'last_report_url', $settings ) ) ) {
+			unset( $settings['last_report_id'], $settings['last_report_url'] );
 			update_option( SiteSetup::SETTINGS, $settings, false );
 		}
 		delete_transient( SiteSetup::REPORT_CACHE );

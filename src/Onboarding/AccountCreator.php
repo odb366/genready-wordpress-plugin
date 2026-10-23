@@ -173,32 +173,34 @@ final class AccountCreator {
 	}
 
 	/**
-	 * The newest stored scan that GenReady adopted, or ''.
+	 * The newest stored scan that GenReady adopted, or null.
 	 *
 	 * @param mixed $adopted adoptedScanIds from the answer.
+	 * @return array|null array( 'id' => string, 'url' => string, 'at' => int ), or null.
 	 */
-	private function newest_adopted( $adopted ): string {
+	private function newest_adopted( $adopted ): ?array {
 		$ids = array_map( 'strtolower', array_filter( is_array( $adopted ) ? $adopted : array(), 'is_string' ) );
 		foreach ( $this->scans->all() as $scan ) {
 			if ( in_array( strtolower( $scan['id'] ), $ids, true ) ) {
-				return $scan['id'];
+				return $scan;
 			}
 		}
-		return '';
+		return null;
 	}
 
 	/**
-	 * Point the Overview at the adopted report, or at nothing.
+	 * Point the Overview and the JSON-LD fix at the adopted report, or at nothing.
 	 *
-	 * @param string $report_id Report ID, or ''.
+	 * @param array|null $scan The adopted scan from AnonymousScans::all(), or null.
 	 */
-	private function set_last_report( string $report_id ): void {
+	private function set_last_report( ?array $scan ): void {
 		$settings = get_option( SiteSetup::SETTINGS );
 		$settings = is_array( $settings ) ? $settings : array();
-		if ( '' === $report_id ) {
-			unset( $settings['last_report_id'] );
+		if ( null === $scan ) {
+			unset( $settings['last_report_id'], $settings['last_report_url'] );
 		} else {
-			$settings['last_report_id'] = $report_id;
+			$settings['last_report_id']  = $scan['id'];
+			$settings['last_report_url'] = $scan['url'];
 		}
 		update_option( SiteSetup::SETTINGS, $settings, false );
 	}

@@ -3,7 +3,7 @@
  * The "Page address" field, its list and "Check this page" (spec 4.1, D5).
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: home (string), suggestions (string[]).
+ * $view: home (string), suggestions (string[]), notice (string, optional: an error for the result line).
  *
  * @package GenReady
  */
@@ -14,6 +14,7 @@ defined( 'ABSPATH' ) || exit;
 
 $home        = (string) ( $view['home'] ?? '' );
 $suggestions = is_array( $view['suggestions'] ?? null ) ? $view['suggestions'] : array();
+$notice      = (string) ( $view['notice'] ?? '' );
 ?>
 <form id="genready-scan-form" class="genready-scan-form" novalidate data-genready-onboarding>
 	<p>
@@ -27,4 +28,4 @@ $suggestions = is_array( $view['suggestions'] ?? null ) ? $view['suggestions'] :
 	</p>
 	<p><button type="submit" class="button button-primary" data-genready-action="check"><?php esc_html_e( 'Check this page', 'genready' ); ?></button></p>
 </form>
-<div id="genready-scan-result" class="genready-result" role="status" aria-live="polite" tabindex="-1"></div>
+<div id="genready-scan-result" class="genready-result<?php echo '' !== $notice ? ' genready-result--error' : ''; ?>" role="status" aria-live="polite" tabindex="-1"><?php echo '' !== $notice ? '<p>' . esc_html( $notice ) . '</p>' : ''; ?></div>

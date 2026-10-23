@@ -130,6 +130,7 @@ class AccountCreatorTest extends TestCase {
 		$this->assertSame( array( 'https://example.com/' ), $this->caches->calls );
 		$this->assertSame( str_repeat( 'f', 48 ), $this->caches->tag_at_purge, 'the tag is on before the purge' );
 		$this->assertSame( self::ID2, $this->options['genready_settings']['last_report_id'] );
+		$this->assertSame( 'https://example.com/pricing/', $this->options['genready_settings']['last_report_url'] );
 		$this->assertArrayNotHasKey( AnonymousScans::OPTION, $this->options );
 		$this->assertArrayNotHasKey( Proof::OPTION, $this->options );
 		$this->assertArrayNotHasKey( 'genready_report_cache', $this->transients );
@@ -143,10 +144,11 @@ class AccountCreatorTest extends TestCase {
 	}
 
 	public function test_no_adopted_scan_leaves_no_last_report(): void {
-		$this->options['genready_settings'] = array( 'last_report_id' => '44444444-4444-4444-8444-444444444444' );
+		$this->options['genready_settings'] = array( 'last_report_id' => '44444444-4444-4444-8444-444444444444', 'last_report_url' => 'https://example.com/old/' );
 		$this->client->public_result        = $this->success( array() );
 		$this->creator()->create( 'owner@example.com' );
 		$this->assertArrayNotHasKey( 'last_report_id', $this->options['genready_settings'] );
+		$this->assertArrayNotHasKey( 'last_report_url', $this->options['genready_settings'] );
 	}
 
 	public function test_the_proof_is_gone_after_an_error_and_after_an_exception(): void {

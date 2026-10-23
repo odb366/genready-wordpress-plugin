@@ -117,7 +117,7 @@ class SiteSetupTest extends TestCase {
 		$r                                  = $this->setup_object()->scan();
 		$this->assertSame( array( 'report_id' => 'abc-123', 'estimated_seconds' => 40 ), $r );
 		$this->assertSame( array( 'POST', '/api/v1/analyze', array( 'url' => 'https://example.com/', 'scope' => 'full' ) ), $this->client->requests[0] );
-		$this->assertSame( array( 'keep' => 1, 'last_report_id' => 'abc-123' ), $this->options['genready_settings'] );
+		$this->assertSame( array( 'keep' => 1, 'last_report_id' => 'abc-123', 'last_report_url' => 'https://example.com/' ), $this->options['genready_settings'] );
 		$this->assertContains( 'transient:genready_report_cache', $this->log );
 	}
 
@@ -174,7 +174,9 @@ class SiteSetupTest extends TestCase {
 		$this->connect();
 		$this->client->request_result = array( 'reportId' => '11111111-2222-3333-4444-555555555555' );
 		$this->setup_object()->scan( 'https://example.com/pricing/' );
+		$this->assertSame( 'https://example.com/pricing/', $this->options['genready_settings']['last_report_url'], 'the URL it sent' );
 		$this->setup_object()->scan( 'https://evil.test/' );
+		$this->assertSame( 'https://example.com/', $this->options['genready_settings']['last_report_url'] );
 		$this->assertSame( 'https://example.com/pricing/', $this->client->requests[0][2]['url'] );
 		$this->assertSame( 'https://example.com/', $this->client->requests[1][2]['url'] );
 	}

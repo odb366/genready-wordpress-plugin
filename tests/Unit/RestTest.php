@@ -198,12 +198,13 @@ class RestTest extends RestTestCase {
 
 	public function test_report_404_clears_last_report_id_without_site_removed_text(): void {
 		$this->connect();
-		$this->options['genready_settings']        = array( 'last_report_id' => self::REPORT_ID );
+		$this->options['genready_settings']        = array( 'last_report_id' => self::REPORT_ID, 'last_report_url' => 'https://example.com/a/' );
 		$this->transients['genready_report_cache'] = array( 'id' => 'other' );
 		$this->client->request_result              = new ApiError( 404, 'NOT_FOUND', 'Report not found' );
 		$result                                    = $this->rest()->report( new FakeRequest() );
 		$this->assertSame( array( 'state' => 'none' ), $result );
 		$this->assertArrayNotHasKey( 'last_report_id', $this->options['genready_settings'] );
+		$this->assertArrayNotHasKey( 'last_report_url', $this->options['genready_settings'] );
 		$this->assertArrayNotHasKey( 'genready_report_cache', $this->transients );
 		$this->assertStringNotContainsString( 'removed', (string) json_encode( $result ) );
 		$this->assertSame( array( 'GET', '/api/v1/reports/' . self::REPORT_ID, null ), $this->client->requests[0] );

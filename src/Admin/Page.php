@@ -270,6 +270,8 @@ final class Page {
 				'email'       => $this->user_email(),
 				'scans'       => $this->scans->all(),
 				'state'       => 'overview' === $name ? $this->state() : array( 'state' => 'none' ),
+				// The scripts loaded the only scan, GenReady said it is gone, and the list is empty now (spec 11).
+				'notice'      => 'start' === $name && 'gone' === ( $this->state['state'] ?? '' ) ? (string) ( $this->state['message'] ?? '' ) : '',
 			);
 		}
 		if ( 'fixes' === $tab ) {
