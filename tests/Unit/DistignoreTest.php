@@ -20,4 +20,10 @@ class DistignoreTest extends TestCase {
 			$this->assertContains( $entry, $ignored, $entry . ' would ship in the release zip.' );
 		}
 	}
+
+	// The main checkout holds the git worktrees; a release built there must not ship them.
+	public function test_git_worktrees_are_excluded_from_the_release(): void {
+		$ignored = array_filter( array_map( 'trim', file( dirname( __DIR__, 2 ) . '/.distignore' ) ) );
+		$this->assertContains( '.worktrees', $ignored );
+	}
 }
