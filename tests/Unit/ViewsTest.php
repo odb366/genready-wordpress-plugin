@@ -14,6 +14,7 @@ class ViewsTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		Monkey\Functions\when( 'wp_kses' )->returnArg( 1 );
 		$escape = function ( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); };
 		foreach ( array( 'esc_html', 'esc_attr', 'esc_textarea' ) as $fn ) {
 			Monkey\Functions\when( $fn )->alias( $escape );
@@ -94,6 +95,46 @@ class ViewsTest extends TestCase {
 		$this->assertStringNotContainsString( 'javascript:', $html );
 	}
 
+	private function overview_for( array $report ): string {
+		return Page::view(
+			'overview',
+			array(
+				'connected' => true,
+				'state'     => array(
+					'state'  => 'complete',
+					'report' => $report,
+				),
+			)
+		);
+	}
+
+	public function test_ai_text_is_formatted_with_the_raw_text_behind_a_toggle(): void {
+		$html = $this->overview_for( Reports::summarize( report_fixture() ) );
+		$this->assertStringContainsString( 'data-genready-text="formatted"', $html );
+		$this->assertStringContainsString( '<h3>Home</h3>', $html );
+		$this->assertMatchesRegularExpression( '#<pre class="genready-ai-text" data-genready-text="raw" tabindex="0" hidden>\# Home#', $html );
+		$this->assertStringContainsString( 'data-genready-toggle="raw-text"', $html );
+		$this->assertStringContainsString( 'Show the raw text', $html );
+	}
+
+	public function test_a_new_report_without_screenshot_shows_the_wait_line_first(): void {
+		$fixture                            = report_fixture( array( 'completedAt' => gmdate( 'Y-m-d\TH:i:s.000\Z', time() - 10 ) ) );
+		$fixture['aiView']['screenshotUrl'] = null;
+		$html                               = $this->overview_for( Reports::summarize( $fixture ) );
+		$this->assertStringContainsString( 'data-genready-screenshot-wait', $html );
+		$this->assertStringContainsString( 'Making the screenshot…', $html );
+		$this->assertStringNotContainsString( 'This scan has no screenshot.', $html );
+		$this->assertStringContainsString( 'data-genready-view="screenshot" aria-pressed="true"', $html );
+	}
+
+	public function test_an_old_report_without_screenshot_says_so(): void {
+		$fixture                            = report_fixture();
+		$fixture['aiView']['screenshotUrl'] = null;
+		$html                               = $this->overview_for( Reports::summarize( $fixture ) );
+		$this->assertStringNotContainsString( 'data-genready-screenshot-wait', $html );
+		$this->assertStringContainsString( 'This scan has no screenshot.', $html );
+	}
+
 	public function test_overview_states_without_a_report(): void {
 		foreach ( array( array( 'state' => 'none' ), array( 'state' => 'pending' ), array( 'state' => 'failed', 'message' => self::XSS ), array( 'state' => 'error', 'message' => self::XSS ) ) as $state ) {
 			$html = Page::view(
@@ -111,7 +152,7 @@ class ViewsTest extends TestCase {
 	public function test_a_running_scan_has_the_same_text_with_and_without_a_connection(): void {
 		foreach ( array( true, false ) as $connected ) {
 			$html = Page::view( 'overview', array( 'connected' => $connected, 'state' => array( 'state' => 'pending' ) ) );
-			$this->assertStringContainsString( '<p>Scanning this page. This takes about 30 seconds.</p>', $html );
+			$this->assertStringContainsString( 'Analyzing the page…</p>', $html );
 			$this->assertStringNotContainsString( 'home page', $html );
 		}
 	}
@@ -274,22 +315,46 @@ class ViewsTest extends TestCase {
 	}
 
 	public function test_fix_cards_without_an_account_link_to_the_banner(): void {
-		$card = array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => 'Create a free account first. GenReady Pro and Agency generate this file.', 'account_link' => true, 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
-		$html = Page::view( 'fixes', array( 'connected' => false, 'first_screen' => false, 'cards' => array( $card ) ) );
-		$this->assertStringContainsString( 'Create a free account first. GenReady Pro and Agency generate this file.', $html );
-		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready#genready-account">Create my free account</a>', $html );
-		$this->assertStringNotContainsString( 'Check this page', $html );
+		$card = array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => 'Fixes come with GenReady Pro and Agency. Create a free account first, then upgrade when you are ready.', 'account_link' => true, 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
+		$html = Page::view( 'fixes', array( 'connected' => false, 'cards' => array( $card ) ) );
+		$this->assertStringContainsString( 'Fixes come with GenReady Pro and Agency.', $html );
+		$this->assertStringContainsString( '<a class="button button-primary" href="#genready-account">Create my free account</a>', $html );
 		$this->assertMatchesRegularExpression( '/data-genready-action="preview" disabled/', $html );
-		$this->assertStringNotContainsString( 'Connect GenReady to preview a fix.', $html );
+		$this->assertStringNotContainsString( 'Your scan found:', $html, 'no list without problems' );
 	}
 
-	// Without a stored scan the Overview is the first screen, which has no account form.
-	public function test_fix_cards_without_a_stored_scan_link_to_the_first_screen(): void {
-		$card = array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => 'Create a free account first. GenReady Pro and Agency generate this file.', 'account_link' => true, 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
-		$html = Page::view( 'fixes', array( 'connected' => false, 'first_screen' => true, 'cards' => array( $card ) ) );
-		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready">Check this page</a>', $html );
-		$this->assertStringNotContainsString( '#genready-account', $html );
+	public function test_each_card_lists_the_problems_it_solves_escaped(): void {
+		$card  = array( 'kind' => 'llms', 'title' => 'llms.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => '', 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
+		$found = array(
+			'llms'   => array( array( 'name' => 'LLM File', 'reason' => self::XSS ) ),
+			'robots' => array( array( 'name' => 'AI Access Rules', 'reason' => 'x' ) ),
+		);
+		$html  = Page::view( 'fixes', array( 'connected' => true, 'cards' => array( $card ), 'found' => $found ) );
+		$this->assert_safe( $html );
+		$this->assertStringContainsString( 'Your scan found:', $html );
+		$this->assertStringContainsString( 'LLM File', $html );
+		$this->assertStringContainsString( 'llms.txt is a short guide to your site for AI tools.', $html );
+		$this->assertStringNotContainsString( 'AI Access Rules', $html, 'only the problems of this card' );
 		$this->assertStringNotContainsString( 'Create my free account', $html );
+	}
+
+	public function test_the_overview_shows_the_fixes_after_the_results_with_same_page_links(): void {
+		$card = array( 'kind' => 'jsonld', 'title' => 'JSON-LD', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => '', 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null );
+		$html = Page::view(
+			'overview',
+			array(
+				'connected' => true,
+				'cards'     => array( $card ),
+				'state'     => array(
+					'state'  => 'complete',
+					'report' => Reports::summarize( report_fixture() ),
+				),
+			)
+		);
+		$this->assertStringContainsString( 'href="#genready-jsonld">Fix with one click</a>', $html );
+		$this->assertStringNotContainsString( 'tab=fixes', $html );
+		$this->assertLessThan( strpos( $html, 'id="genready-fixes"' ), strpos( $html, 'genready-footer' ), 'results first' );
+		$this->assertStringContainsString( 'Schema Markup', substr( $html, (int) strpos( $html, 'id="genready-fixes"' ) ), 'the JSON-LD card lists the schema problem' );
 	}
 
 	public function test_the_scan_form_escapes_the_suggestions(): void {

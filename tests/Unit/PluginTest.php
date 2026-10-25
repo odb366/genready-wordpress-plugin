@@ -25,7 +25,7 @@ class PluginTest extends TestCase {
 		Monkey\Functions\when( 'add_action' )->justReturn( true );
 		Monkey\Functions\when( 'add_filter' )->justReturn( true );
 		\GenReady\Plugin::instance()->boot();
-		$this->assertSame( '1.0.0', GENREADY_VERSION );
+		$this->assertSame( '1.1.0', GENREADY_VERSION );
 		$this->assertSame( 'https://genready.ai', GENREADY_API_BASE );
 	}
 

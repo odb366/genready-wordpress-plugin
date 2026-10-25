@@ -12,7 +12,7 @@ test('first screen: heading, page field and list, consent, Connect link, and no 
 
 	await openGenReady(page);
 	await expect(page.getByRole('heading', { name: 'See how AI search engines and agents read your site' })).toBeVisible();
-	const field = page.getByLabel('Page address');
+	const field = page.getByLabel('Page to analyze');
 	await expect(field).toHaveAttribute('type', 'url');
 	await expect(field).toHaveValue(`${SITE}/`);
 	const options = await page.locator('#genready-pages option').evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));

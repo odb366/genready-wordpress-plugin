@@ -10,7 +10,7 @@ test('switch off: only Connect for an hour, and the API key still works', async 
 	await tools.fakeWp('off');
 	try {
 		await openGenReady(page);
-		await page.getByRole('button', { name: 'Check this page' }).click();
+		await page.getByRole('button', { name: 'Check AI readiness' }).click();
 		const paused = 'GenReady paused free scans for now. Connect with a GenReady account.';
 		await expect(page.locator('#genready-scan-result')).toHaveText(paused);
 		await expect(page.locator('#genready-scan-form')).toBeHidden();
@@ -18,7 +18,7 @@ test('switch off: only Connect for an hour, and the API key still works', async 
 
 		await openGenReady(page);
 		await expect(page.locator('.genready-connect')).toContainText(paused);
-		await expect(page.getByRole('button', { name: 'Check this page' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Check AI readiness' })).toHaveCount(0);
 		expect(await tools.options('_transient_genready_anon_off')).toEqual(['_transient_genready_anon_off']);
 	} finally {
 		await tools.fakeWp('');

@@ -228,11 +228,11 @@ final class AnonymousScans {
 		$now = null === $now ? time() : $now;
 		$end = $now + $seconds;
 		if ( $seconds <= 0 || wp_date( 'Y-m-d', $end ) !== wp_date( 'Y-m-d', $now ) ) {
-			return __( 'Scan again tomorrow, or create a free account.', 'genready' );
+			return __( "You used today's free scans. Create a free account for 25 scans a month.", 'genready' );
 		}
 		return sprintf(
 			/* translators: %s: time of day of the next possible scan, in the site's time format. */
-			__( 'Scan again after %s, or create a free account.', 'genready' ),
+			__( 'Free scans start again at %s. Create a free account for 25 scans a month.', 'genready' ),
 			wp_date( (string) get_option( 'time_format' ), $end )
 		);
 	}

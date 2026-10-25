@@ -182,7 +182,7 @@ class AccountCreatorTest extends TestCase {
 	public function server_errors(): array {
 		return array(
 			'email exists'    => array( 409, 'ACCOUNT_EXISTS', 'This email already has a GenReady account.' ),
-			'other account'   => array( 409, 'VERIFIED_ELSEWHERE', 'This site is connected to another GenReady account.' ),
+			'other account'   => array( 409, 'VERIFIED_ELSEWHERE', 'This site is verified in another GenReady account. Sign in with that account, or remove the site from it and try again.' ),
 			'proof failed'    => array( 409, 'PROOF_FAILED', 'GenReady could not confirm that this site is yours. Connect with a GenReady account instead.' ),
 			'limit'           => array( 429, 'RATE_LIMITED', 'Too many account requests today. Try again tomorrow.' ),
 			'switch off'      => array( 503, 'WP_ONBOARDING_OFF', 'GenReady paused free scans for now. Connect with a GenReady account.' ),

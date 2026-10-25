@@ -34,10 +34,17 @@ class PageTest extends TestCase {
 	private $client;
 	/** @var FixCards|null The cards of page(), or null for the real ones. */
 	private $cards;
+	/**
+	 * The cards the default FixCards double returns.
+	 *
+	 * @var array[]
+	 */
+	private $card_list = array();
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		Monkey\Functions\when( 'wp_kses' )->returnArg( 1 );
 		$this->options    = array();
 		$this->transients = array();
 		$this->scripts    = array();
@@ -89,23 +96,39 @@ class PageTest extends TestCase {
 		return new Page(
 			$this->store,
 			new Reports( $this->store, $this->client, $scans ),
-			$this->cards ?? new FixCards(
-				$fixes,
-				new RobotsFix( $fixes, $files, $this->client, $caches, 'd1' ),
-				new LlmsTxtFix( $fixes, $files, $this->client, $caches, $seo, 'd1' ),
-				new JsonLdFix( $fixes, $this->client, $caches, $seo, 'd1' ),
-				$files,
-				function (): bool {
-					return null !== $this->store->load();
+			$this->cards ?? new class( $this->card_list, $fixes, new RobotsFix( $fixes, $files, $this->client, $caches, 'd1' ), new LlmsTxtFix( $fixes, $files, $this->client, $caches, $seo, 'd1' ), new JsonLdFix( $fixes, $this->client, $caches, $seo, 'd1' ), $files ) extends FixCards {
+				/** @var array[] */
+				private $list;
+				public function __construct( array $list, ...$rest ) {
+					parent::__construct( ...$rest );
+					$this->list = $list;
 				}
-			),
+				public function all( array $jsonld_target ): array {
+					return $this->list;
+				}
+				public function jsonld_target( ?string $report_url ): array {
+					return array();
+				}
+			},
 			$scans
 		);
 	}
 
 	/** Stubs for render(): the escaping of ViewsTest and the WordPress data the views read. */
 	private function render( array $get = array(), bool $enqueue_first = false ): string {
-		$_GET   = $get;
+		$_GET = $get;
+		$this->stub_views();
+		$page = $this->page();
+		if ( $enqueue_first ) {
+			$page->enqueue( 'settings_page_genready' ); // WordPress runs admin_enqueue_scripts before the page callback.
+		}
+		ob_start();
+		$page->render();
+		return (string) ob_get_clean();
+	}
+
+	/** The escaping of ViewsTest and the WordPress data the views read. */
+	private function stub_views(): void {
 		$escape = function ( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); };
 		foreach ( array( 'esc_html', 'esc_attr', 'esc_textarea', 'esc_html__', 'esc_attr__' ) as $fn ) {
 			Monkey\Functions\when( $fn )->alias( $escape );
@@ -134,13 +157,6 @@ class PageTest extends TestCase {
 		$this->options['date_format']         = 'Y-m-d';
 		Monkey\Functions\when( 'wp_strip_all_tags' )->alias( 'strip_tags' );
 		$this->options['permalink_structure'] = '/%postname%/';
-		$page = $this->page();
-		if ( $enqueue_first ) {
-			$page->enqueue( 'settings_page_genready' ); // WordPress runs admin_enqueue_scripts before the page callback.
-		}
-		ob_start();
-		$page->render();
-		return (string) ob_get_clean();
 	}
 
 
@@ -205,9 +221,9 @@ class PageTest extends TestCase {
 	}
 
 	// Fix round A, G3: the robots.txt card runs do_robots(), which sends a header, so the
-	// Fixes tab builds its cards on the load hook, before wp-admin prints anything.
+	// Overview builds its cards on the load hook, before wp-admin prints anything.
 
-	public function test_fixes_tab_builds_the_cards_before_any_output(): void {
+	public function test_the_overview_builds_the_cards_before_any_output(): void {
 		$hooks = array();
 		Monkey\Functions\when( 'add_action' )->alias( function ( $hook, $callback ) use ( &$hooks ) { $hooks[ $hook ] = $callback; } );
 		$client = new FakeClient();
@@ -220,7 +236,7 @@ class PageTest extends TestCase {
 			public $built = 0;
 			public function all( array $jsonld_target ): array {
 				++$this->built;
-				return array();
+				return array( array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied' ) );
 			}
 			public function jsonld_target( ?string $report_url ): array {
 				return array();
@@ -230,13 +246,9 @@ class PageTest extends TestCase {
 		$page->register();
 		$this->assertSame( array( $page, 'prepare' ), $hooks['load-settings_page_genready'] );
 
-		$_GET = array( 'tab' => 'fixes' );
-		Monkey\Functions\when( 'sanitize_key' )->returnArg( 1 );
-		Monkey\Functions\when( 'wp_unslash' )->returnArg( 1 );
-		Monkey\Functions\when( '__' )->returnArg( 1 );
-		Monkey\Functions\when( 'esc_attr__' )->returnArg( 1 );
-		Monkey\Functions\when( 'esc_html' )->returnArg( 1 );
-		Monkey\Functions\when( 'esc_html_e' )->alias( function ( $t ) { echo $t; } );
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$_GET = array( 'tab' => 'overview' );
+		$this->stub_views();
 		$page->prepare();
 		$this->assertSame( 1, $cards->built );
 		ob_start();
@@ -254,11 +266,12 @@ class PageTest extends TestCase {
 		Monkey\Functions\expect( 'wp_remote_request' )->never();
 		$html = $this->render();
 		$this->assertStringContainsString( '<h2 id="genready-start-title">See how AI search engines and agents read your site</h2>', $html );
-		$this->assertStringContainsString( '<label for="genready-page-url">Page address</label>', $html );
+		$this->assertStringContainsString( '<label for="genready-page-url" class="genready-scan-form__label">Page to analyze</label>', $html );
+		$this->assertStringContainsString( 'Enter the address of any public page on this site.', $html );
 		$this->assertStringContainsString( 'type="url" id="genready-page-url"', $html );
 		$this->assertStringContainsString( 'value="https://example.com/"', $html );
 		$this->assertStringContainsString( '<option value="https://example.com/sample-page/"></option>', $html );
-		$this->assertStringContainsString( 'Check this page', $html );
+		$this->assertStringContainsString( 'Check AI readiness', $html );
 		$this->assertStringContainsString( 'Sends your site address to genready.ai. No account needed.', $html );
 		$this->assertStringContainsString( 'https://genready.ai/terms', $html );
 		$this->assertStringContainsString( 'Already have a GenReady account? Connect', $html );
@@ -278,7 +291,7 @@ class PageTest extends TestCase {
 		$this->assertStringContainsString( 'type="email" id="genready-account-email" class="regular-text" value="admin@example.com"', $html );
 		$this->assertStringContainsString( 'Create my free account', $html );
 		$this->assertStringContainsString( 'Creates a GenReady account for this email and adds this site to it. GenReady emails you a link to set your password.', $html );
-		$this->assertStringContainsString( 'Check this page', $html );
+		$this->assertStringContainsString( 'Check AI readiness', $html );
 		$this->assertStringNotContainsString( 'Recent scans', $html, 'only with 2 or more scans' );
 		$this->assertStringContainsString( 'How AI sees your homepage', $html );
 		$this->assertSame( self::TOKEN, $this->client->publics[0][3] );
@@ -336,42 +349,48 @@ class PageTest extends TestCase {
 		$this->assertSame( array(), $this->client->publics );
 	}
 
-	/** The Fixes tab without a connection, with one card as FixCards::without_account() makes it. */
-	private function render_fixes(): string {
-		$files       = new MemoryFiles();
-		$fixes       = new FixStore();
-		$caches      = new RecordingCaches();
-		$seo         = new SeoPlugins( $files );
-		$this->cards = new class( $fixes, new RobotsFix( $fixes, $files, $this->client, $caches, 'd1' ), new LlmsTxtFix( $fixes, $files, $this->client, $caches, $seo, 'd1' ), new JsonLdFix( $fixes, $this->client, $caches, $seo, 'd1' ), $files ) extends FixCards {
-			public function all( array $jsonld_target ): array {
-				return array( self::without_account( array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'applied' => false ) ) );
-			}
-			public function jsonld_target( ?string $report_url ): array {
-				return array();
-			}
-		};
-		return $this->render( array( 'tab' => 'fixes' ) );
+	/** The robots.txt card without a connection, as FixCards::without_account() makes it. */
+	private function account_card(): array {
+		$this->stub_views();
+		return FixCards::without_account( array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'applied' => false ) );
 	}
 
-	public function test_fix_cards_without_a_stored_scan_link_to_the_first_screen(): void {
-		$html = $this->render_fixes();
-		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready">Check this page</a>', $html );
-		$this->assertStringNotContainsString( '#genready-account', $html );
+	public function test_the_first_screen_has_no_fix_cards(): void {
+		$this->card_list = array( $this->account_card() );
+		$html            = $this->render();
+		$this->assertStringContainsString( '<h2 id="genready-start-title">', $html );
+		$this->assertStringNotContainsString( 'genready-fixes', $html );
 	}
 
-	public function test_fix_cards_with_a_stored_scan_link_to_the_banner(): void {
+	public function test_fix_cards_sit_under_the_results_and_link_to_the_banner(): void {
 		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
-		$html = $this->render_fixes();
-		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready#genready-account">Create my free account</a>', $html );
-		$this->assertStringNotContainsString( 'Check this page', $html );
+		$this->card_list = array( $this->account_card() );
+		$html            = $this->render();
+		$this->assertStringContainsString( '<h2 id="genready-fixes-title">Fixes</h2>', $html );
+		$this->assertStringContainsString( 'Fixes add what AI search engines and agents look for on your site.', $html );
+		$this->assertStringContainsString( '<h3 id="genready-robots-title">robots.txt</h3>', $html );
+		$this->assertStringContainsString( 'Your robots.txt tells crawlers what they may read.', $html );
+		$this->assertStringContainsString( 'Fixes come with GenReady Pro and Agency. Create a free account first, then upgrade when you are ready.', $html );
+		$this->assertStringContainsString( '<a class="button button-primary" href="#genready-account">Create my free account</a>', $html );
+		$this->assertLessThan( strpos( $html, 'id="genready-fixes"' ), strpos( $html, 'id="genready-account"' ), 'the banner comes first' );
 	}
 
-	// While GenReady paused free scans the Overview is the connect form, which has id="genready-account".
-	public function test_fix_cards_while_free_scans_are_paused_link_to_the_connect_form(): void {
+	public function test_the_old_fixes_tab_opens_the_overview(): void {
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->card_list = array( $this->account_card() );
+		$html            = $this->render( array( 'tab' => 'fixes' ) );
+		$this->assertStringContainsString( 'tab=overview" class="nav-tab nav-tab-active" aria-current="page">Overview</a>', $html );
+		$this->assertStringContainsString( 'id="genready-fixes"', $html );
+		$this->assertStringNotContainsString( 'tab=fixes', $html );
+	}
+
+	// While GenReady paused free scans the Overview is the connect form: no fix cards.
+	public function test_no_fix_cards_while_free_scans_are_paused(): void {
 		$this->transients['genready_anon_off'] = 1;
-		$html                                  = $this->render_fixes();
-		$this->assertStringContainsString( 'href="https://example.com/wp-admin/options-general.php?page=genready#genready-account">Create my free account</a>', $html );
-		$this->assertStringNotContainsString( 'Check this page', $html );
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->card_list = array( $this->account_card() );
+		$html            = $this->render();
+		$this->assertStringNotContainsString( 'genready-fixes', $html );
 	}
 
 	// Review Focus 3.

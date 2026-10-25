@@ -282,7 +282,6 @@
 	border-left: 4px solid #2271b1;
 }
 
-.genready-admin .genready-scan-form input[type="url"],
 .genready-admin .genready-account-form input[type="email"] {
 	width: 100%;
 	max-width: 32rem;
@@ -307,4 +306,126 @@
 .genready-admin .genready-aiview__url {
 	color: #50575e;
 	overflow-wrap: anywhere;
+}
+
+/* The text AI crawlers read, formatted. */
+.genready-ai-text--formatted {
+	font-family: inherit;
+	font-size: 14px;
+	line-height: 1.6;
+	padding: 4px 16px;
+	white-space: normal;
+}
+
+.genready-ai-text--formatted h3,
+.genready-ai-text--formatted h4,
+.genready-ai-text--formatted h5,
+.genready-ai-text--formatted h6 {
+	margin: 1.2em 0 0.4em;
+}
+
+.genready-ai-text--formatted table {
+	border-collapse: collapse;
+	margin: 8px 0;
+}
+
+.genready-ai-text--formatted th,
+.genready-ai-text--formatted td {
+	border: 1px solid var(--genready-border);
+	padding: 4px 8px;
+	text-align: left;
+}
+
+.genready-ai-text--formatted blockquote {
+	border-left: 4px solid var(--genready-border);
+	margin: 8px 0;
+	padding-left: 12px;
+}
+
+.genready-ai-text--formatted pre {
+	overflow-x: auto;
+	white-space: pre;
+}
+
+/* A wait with a spinner: a running scan, a screenshot on its way. */
+.genready-admin .genready-wait {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+}
+
+.genready-admin .genready-wait .spinner {
+	float: none;
+	margin: 0;
+}
+
+.genready-admin .genready-elapsed {
+	color: #646970;
+	font-variant-numeric: tabular-nums;
+}
+
+/* "Page to analyze": a wide field with the button on the same row. */
+.genready-admin .genready-scan-form__label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+.genready-admin .genready-scan-form__row {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	max-width: 960px;
+}
+
+.genready-admin .genready-scan-form__row input[type="url"] {
+	flex: 1 1 24rem;
+	min-width: 0;
+}
+
+/* Fixes, on the Overview under the results. */
+.genready-admin .genready-fixes {
+	margin-top: 32px;
+}
+
+.genready-admin .genready-fixes > h2 {
+	font-size: 1.3em;
+	margin: 0 0 4px;
+}
+
+.genready-admin .genready-fixes__intro {
+	color: #50575e;
+	font-size: 14px;
+	margin: 0 0 16px;
+	max-width: 48rem;
+}
+
+.genready-admin .genready-fix h3 {
+	font-size: 1.15em;
+	margin: 0 0 8px;
+}
+
+.genready-admin .genready-fix__about {
+	font-size: 14px;
+	line-height: 1.6;
+	max-width: 48rem;
+}
+
+.genready-admin .genready-fix__found {
+	background: #fcf9e8;
+	border-left: 4px solid #dba617;
+	margin: 12px 0;
+	max-width: 48rem;
+	padding: 4px 12px;
+}
+
+.genready-admin .genready-fix__found ul {
+	list-style: disc;
+	margin: 0 0 8px 20px;
+}
+
+.genready-admin .genready-fix__found .genready-check__reason {
+	color: #50575e;
+	display: block;
 }

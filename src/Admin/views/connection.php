@@ -64,7 +64,7 @@ $method   = 'oauth' === ( $account['method'] ?? '' ) ? __( 'GenReady account (OA
 $verified = $account['verified'] ?? null;
 ?>
 <section class="genready-card genready-connection" aria-labelledby="genready-connection-title">
-	<h2 id="genready-connection-title"><?php esc_html_e( 'Connection', 'genready' ); ?></h2>
+	<h2 id="genready-connection-title"><?php esc_html_e( 'Account', 'genready' ); ?></h2>
 	<table class="form-table" role="presentation">
 		<tbody>
 			<tr>

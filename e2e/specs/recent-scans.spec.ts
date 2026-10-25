@@ -27,7 +27,7 @@ test('two stored scans: the page heading, the recent list, the home page, and th
 
 	await openGenReady(page, 'fixes');
 	const robots = card(page, 'robots');
-	await expect(robots.message).toHaveText('Create a free account first. GenReady Pro and Agency generate this file.');
+	await expect(robots.message).toHaveText('Fixes come with GenReady Pro and Agency. Create a free account first, then upgrade when you are ready.');
 	await expect(robots.button('preview')).toBeDisabled();
 	await expect(robots.root.getByRole('link', { name: 'Create my free account' })).toHaveAttribute('href', /#genready-account$/);
 });

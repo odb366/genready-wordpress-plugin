@@ -1,23 +1,27 @@
 <?php
 /**
- * Fixes tab: one card for each fix.
+ * The Fixes section of the Overview, under the results: an intro and one card for each fix.
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: connected (bool), first_screen (bool, true when the Overview is the
- * first screen: not paused and no stored scan), cards (arrays from FixCards::card()).
+ * $view: connected (bool), cards (arrays from FixCards::card()), found (kind => list of
+ * array( 'name', 'reason' ): the checks of the shown report that the fix solves).
  *
  * @package GenReady
  */
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- included inside Page::view(); these variables are local.
 
+use GenReady\Admin\FixCards;
+
 defined( 'ABSPATH' ) || exit;
 
 $connected = ! empty( $view['connected'] );
 $cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
-$first     = ! empty( $view['first_screen'] );
+$found     = is_array( $view['found'] ?? null ) ? $view['found'] : array();
 ?>
-<div class="genready-fixes">
+<section class="genready-fixes" id="genready-fixes" aria-labelledby="genready-fixes-title">
+	<h2 id="genready-fixes-title"><?php esc_html_e( 'Fixes', 'genready' ); ?></h2>
+	<p class="genready-fixes__intro"><?php esc_html_e( 'Fixes add what AI search engines and agents look for on your site. GenReady writes each change, and nothing goes live until you click Apply. Undo puts the old version back.', 'genready' ); ?></p>
 	<?php foreach ( $cards as $card ) : ?>
 		<?php
 		$kind = (string) ( $card['kind'] ?? '' );
@@ -29,19 +33,32 @@ $first     = ! empty( $view['first_screen'] );
 		$versions = is_array( $card['versions'] ?? null ) ? $card['versions'] : array();
 		$blocked  = ! empty( $card['blocked'] );
 		$applied  = ! empty( $card['applied'] );
+		$problems = is_array( $found[ $kind ] ?? null ) ? $found[ $kind ] : array();
 		?>
 		<section class="genready-card genready-fix" id="<?php echo esc_attr( $card_id ); ?>" data-kind="<?php echo esc_attr( $kind ); ?>" aria-labelledby="<?php echo esc_attr( $card_id . '-title' ); ?>">
-			<h2 id="<?php echo esc_attr( $card_id . '-title' ); ?>"><?php echo esc_html( (string) ( $card['title'] ?? '' ) ); ?></h2>
+			<h3 id="<?php echo esc_attr( $card_id . '-title' ); ?>"><?php echo esc_html( (string) ( $card['title'] ?? '' ) ); ?></h3>
+			<p class="genready-fix__about"><?php echo esc_html( FixCards::about( $kind ) ); ?></p>
+			<?php if ( array() !== $problems ) : ?>
+				<div class="genready-fix__found">
+					<p><strong><?php esc_html_e( 'Your scan found:', 'genready' ); ?></strong></p>
+					<ul>
+						<?php foreach ( $problems as $problem ) : ?>
+							<li>
+								<?php echo esc_html( (string) ( $problem['name'] ?? '' ) ); ?>
+								<?php if ( '' !== (string) ( $problem['reason'] ?? '' ) ) : ?>
+									<span class="genready-check__reason"><?php echo esc_html( (string) $problem['reason'] ); ?></span>
+								<?php endif; ?>
+							</li>
+						<?php endforeach; ?>
+					</ul>
+				</div>
+			<?php endif; ?>
 			<p class="genready-fix__state">
 				<span class="<?php echo esc_attr( 'genready-state genready-state--' . (string) ( $card['state'] ?? 'not_applied' ) ); ?>" data-genready-field="state"><?php echo esc_html( (string) ( $card['state_text'] ?? '' ) ); ?></span>
 			</p>
 			<p class="genready-fix__message" data-genready-field="message"<?php echo '' === (string) ( $card['message'] ?? '' ) ? ' hidden' : ''; ?>><?php echo esc_html( (string) ( $card['message'] ?? '' ) ); ?></p>
 			<?php if ( ! empty( $card['account_link'] ) ) : ?>
-				<?php if ( $first ) : ?>
-					<p class="genready-fix__account"><a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready' ) ); ?>"><?php esc_html_e( 'Check this page', 'genready' ); ?></a></p>
-				<?php else : ?>
-					<p class="genready-fix__account"><a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready#genready-account' ) ); ?>"><?php esc_html_e( 'Create my free account', 'genready' ); ?></a></p>
-				<?php endif; ?>
+				<p class="genready-fix__account"><a class="button button-primary" href="#genready-account"><?php esc_html_e( 'Create my free account', 'genready' ); ?></a></p>
 			<?php endif; ?>
 			<p class="genready-fix__live" data-genready-field="live"<?php echo null === $live ? ' hidden' : ''; ?>><?php echo esc_html( null === $live ? '' : (string) ( $live['message'] ?? '' ) ); ?></p>
 
@@ -58,8 +75,6 @@ $first     = ! empty( $view['first_screen'] );
 					<textarea id="genready-llms-tagline" class="large-text" rows="2" maxlength="500" data-genready-input="tagline"><?php echo esc_textarea( (string) ( $card['tagline'] ?? '' ) ); ?></textarea>
 					<span class="description"><?php esc_html_e( 'One or two sentences about your site. GenReady puts them at the top of llms.txt.', 'genready' ); ?></span>
 				</p>
-			<?php else : ?>
-				<p class="description"><?php esc_html_e( 'GenReady adds the structured data of the scanned page. It never changes a value that your theme or SEO plugin already sets.', 'genready' ); ?></p>
 			<?php endif; ?>
 
 			<p class="genready-fix__actions">
@@ -92,4 +107,4 @@ $first     = ! empty( $view['first_screen'] );
 			<div class="genready-result" data-genready-field="result" role="status" aria-live="polite" tabindex="-1"></div>
 		</section>
 	<?php endforeach; ?>
-</div>
+</section>

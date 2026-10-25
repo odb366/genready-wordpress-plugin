@@ -9,7 +9,7 @@ test('a loopback page: the server refuses it and nothing is stored', async ({ pa
 	const tools = await helper(page);
 	await tools.deleteOption('genready_anonymous_scans');
 	await openGenReady(page);
-	await page.getByRole('button', { name: 'Check this page' }).click();
+	await page.getByRole('button', { name: 'Check AI readiness' }).click();
 	await expect(page.locator('#genready-scan-result')).toContainText('GenReady can check only pages that anyone can open on the internet.');
 	expect(await tools.options('genready_anonymous_scans')).toEqual([]);
 });
@@ -19,8 +19,8 @@ test('an address on another site: refused in WordPress with no call', async ({ p
 	const tools = await helper(page);
 	await openGenReady(page);
 	await tools.resetHttpLog();
-	await page.getByLabel('Page address').fill('https://example.org/');
-	await page.getByRole('button', { name: 'Check this page' }).click();
+	await page.getByLabel('Page to analyze').fill('https://example.org/');
+	await page.getByRole('button', { name: 'Check AI readiness' }).click();
 	await expect(page.locator('#genready-scan-result')).toHaveText('Enter an address on this site.');
 	expect((await tools.httpLog()).filter((entry) => entry.url.startsWith(API_BASE))).toEqual([]);
 });
@@ -29,7 +29,7 @@ test('the 4th scan of a day: the limit text', async ({ page }) => {
 	anonSeed('limit', 'wpscan-host:127.0.0.1', '3');
 	await login(page);
 	await openGenReady(page);
-	await page.getByRole('button', { name: 'Check this page' }).click();
-	await expect(page.locator('#genready-scan-result')).toHaveText(/^Scan again (tomorrow|after .+), or create a free account\.$/);
+	await page.getByRole('button', { name: 'Check AI readiness' }).click();
+	await expect(page.locator('#genready-scan-result')).toHaveText(/^(You used today's free scans|Free scans start again at .+)\. Create a free account for 25 scans a month\.$/);
 	anonSeed('reset');
 });

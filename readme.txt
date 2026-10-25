@@ -4,7 +4,7 @@ Tags: llms.txt, robots.txt, schema, ai search, ai crawlers
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -54,7 +54,7 @@ The plugin sends nothing until an administrator clicks a button on the GenReady 
 
 What the plugin sends, and when:
 
-* "Check this page" and "Scan again" without an account: your site address, the address of the page, the plugin version and the WordPress version. GenReady then loads that public page from the internet, like a crawler, and keeps the result. The plugin keeps a random key for each result, so it can show the result to you. Without an account, the plugin can show a result for 30 days.
+* "Check AI readiness" and "Scan again" without an account: your site address, the address of the page, the plugin version and the WordPress version. GenReady then loads that public page from the internet, like a crawler, and keeps the result. The plugin keeps a random key for each result, so it can show the result to you. Without an account, the plugin can show a result for 30 days.
 * "Create my free account": the email address in the field, your site address, the keys of your earlier results, a random one-time code, the plugin version and the WordPress version. GenReady then asks your site for that code at /wp-json/genready/v1/proof/ to confirm that the site is yours. The plugin answers each code once, within 2 minutes. GenReady creates a free account for the email, adds your site, moves your earlier results into the account and emails a link to set a password. If nobody sets the password within 30 days, GenReady deletes the account.
 * "Connect to GenReady", and every request after you connect: your site address, and for a scan the address of the page. The plugin version and the WordPress version go in the User-Agent header.
 * Your admin email address: only when you tick "Send my admin email to fill in the sign-in form", and only on the Connect click. GenReady uses it to fill in the sign-in form.
@@ -73,7 +73,7 @@ Read the terms of service at https://genready.ai/terms and the privacy policy at
 
 1. Install the plugin from Plugins, Add New, or upload the folder to `/wp-content/plugins/`.
 2. Activate it.
-3. Go to Settings, GenReady and click "Check this page".
+3. Go to Settings, GenReady and click "Check AI readiness".
 4. To save your site and track your score, click "Create my free account".
 
 Agencies and existing users click "Already have a GenReady account? Connect".
@@ -84,7 +84,7 @@ If GenReady cannot reach your site, use "Use an API key". Create a key for one s
 
 = Do I need a GenReady account? =
 
-No. "Check this page" shows the score of any public page on your site, 3 times a day. A free account saves your site and your results. The fixes need GenReady Pro or Agency.
+No. "Check AI readiness" shows the score of any public page on your site, 3 times a day. A free account saves your site and your results. The fixes need GenReady Pro or Agency.
 
 = What happens when I create an account in the plugin? =
 
@@ -135,6 +135,16 @@ Clear the Kinsta cache in MyKinsta after you apply a fix. Kinsta has no public p
 The source code is on GitHub: https://github.com/odb366/genready-wordpress-plugin
 
 == Changelog ==
+
+= 1.1.0 =
+* The fixes are on the Overview, under the results. Each fix says what it does and lists the problems from your scan that it solves.
+* "What AI reads" shows the text with its headings, lists and links. "Show the raw text" shows the exact text.
+* The screenshot shows as soon as GenReady makes it, without a reload.
+* A scan shows a spinner and the seconds since it started.
+* The button is now "Check AI readiness", and the "Page to analyze" field is wider.
+* After the daily limit, a button opens the free account form.
+* The Connection tab is now the Account tab.
+* The plugin includes Parsedown 1.8.0 (MIT license) to format the text.
 
 = 1.0.0 =
 * First release: the score of any public page without an account, a free account in one click, connection to GenReady, and the robots.txt, llms.txt and JSON-LD fixes.

@@ -29,7 +29,7 @@ class CopyTest extends TestCase {
 	public function test_the_check_finds_the_ui_strings(): void {
 		$texts = array_column( $this->ui_strings(), 1 );
 		$this->assertGreaterThan( 150, count( $texts ) );
-		$this->assertContains( 'Check this page', $texts );
+		$this->assertContains( 'Check AI readiness', $texts );
 		$this->assertContains( 'Create my free account', $texts );
 	}
 

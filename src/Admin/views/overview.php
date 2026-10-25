@@ -3,8 +3,9 @@
  * Overview tab: score card, AI view, sections and footer.
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: connected (bool), state (array from Reports::state(), or state 'error'), and without a
- * connection: home, suggestions, email, scans (from AnonymousScans::all()).
+ * $view: connected (bool), state (array from Reports::state(), or state 'error'), cards (fix cards
+ * for the Fixes section, may be empty), and without a connection: home, suggestions, email, scans
+ * (from AnonymousScans::all()).
  *
  * @package GenReady
  */
@@ -14,6 +15,7 @@
 use GenReady\Admin\Page;
 use GenReady\Admin\ScoreCard;
 use GenReady\Onboarding\PageUrl;
+use GenReady\Support\Markdown;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -23,10 +25,11 @@ $report = 'complete' === ( $state['state'] ?? '' ) && is_array( $state['report']
 $connected = ! empty( $view['connected'] );
 $scans     = is_array( $view['scans'] ?? null ) ? $view['scans'] : array();
 $open_scan = (string) ( $state['scan_id'] ?? '' );
+$cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
 
 if ( ! $connected ) {
 	echo Page::view( 'banner', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
-	echo '<section class="genready-card genready-check" aria-label="' . esc_attr__( 'Check this page', 'genready' ) . '">';
+	echo '<section class="genready-card genready-check" aria-label="' . esc_attr__( 'Check AI readiness', 'genready' ) . '">';
 	echo Page::view( 'scan-form', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
 	echo '</section>';
 	if ( count( $scans ) >= 2 ) :
@@ -55,7 +58,8 @@ if ( null === $report ) :
 	<section class="genready-card genready-empty" data-genready-state="<?php echo esc_attr( (string) ( $state['state'] ?? 'none' ) ); ?>">
 		<?php if ( 'pending' === ( $state['state'] ?? '' ) ) : ?>
 			<h2><?php esc_html_e( 'The scan is running', 'genready' ); ?></h2>
-			<p><?php esc_html_e( 'Scanning this page. This takes about 30 seconds.', 'genready' ); ?></p>
+			<p class="genready-wait"><span class="spinner is-active" aria-hidden="true"></span><?php esc_html_e( 'Analyzing the page…', 'genready' ); ?></p>
+			<p class="description"><?php esc_html_e( 'This usually takes 5 to 30 seconds.', 'genready' ); ?></p>
 		<?php elseif ( in_array( $state['state'] ?? '', array( 'failed', 'error', 'gone' ), true ) ) : ?>
 			<h2><?php esc_html_e( 'No report to show', 'genready' ); ?></h2>
 			<div class="notice notice-error inline"><p><?php echo esc_html( (string) ( $state['message'] ?? '' ) ); ?></p></div>
@@ -69,6 +73,16 @@ if ( null === $report ) :
 		<?php endif; ?>
 	</section>
 	<?php
+	if ( array() !== $cards ) {
+		$fixes_html = Page::view(
+			'fixes',
+			array(
+				'connected' => $connected,
+				'cards'     => $cards,
+			)
+		);
+		echo $fixes_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
+	}
 	return;
 endif;
 
@@ -78,9 +92,11 @@ $ai_view    = is_array( $report['ai_view'] ?? null ) ? $report['ai_view'] : arra
 $screenshot = is_string( $ai_view['screenshot'] ?? null ) ? $ai_view['screenshot'] : null;
 $markdown   = is_string( $ai_view['markdown'] ?? null ) ? $ai_view['markdown'] : null;
 $gap        = is_int( $ai_view['gap'] ?? null ) ? $ai_view['gap'] : null;
-$first      = null !== $screenshot ? 'screenshot' : 'text';
+$shot_wait  = null === $screenshot && ! empty( $ai_view['screenshot_pending'] );
+$first      = null !== $screenshot || $shot_wait ? 'screenshot' : 'text';
+$formatted  = null !== $markdown ? Markdown::to_html( $markdown ) : '';
 $is_home    = '' === (string) ( $report['url'] ?? '' ) || PageUrl::is_home( (string) $report['url'] );
-$fixes_url  = admin_url( 'options-general.php?page=genready&tab=fixes' );
+$shot_alt   = $is_home ? __( 'Screenshot of your homepage', 'genready' ) : __( 'Screenshot of this page', 'genready' );
 $verdicts   = array(
 	'pass' => __( 'Pass', 'genready' ),
 	'warn' => __( 'Warning', 'genready' ),
@@ -153,14 +169,22 @@ $sections   = array(
 		<?php endif; ?>
 		<div class="genready-aiview__panel" data-genready-panel="screenshot"<?php echo 'screenshot' === $first ? '' : ' hidden'; ?>>
 			<?php if ( null !== $screenshot ) : ?>
-				<img class="genready-shot" src="<?php echo esc_url( $screenshot ); ?>" alt="<?php echo esc_attr( $is_home ? __( 'Screenshot of your homepage', 'genready' ) : __( 'Screenshot of this page', 'genready' ) ); ?>" loading="lazy" width="1280" height="800">
+				<img class="genready-shot" src="<?php echo esc_url( $screenshot ); ?>" alt="<?php echo esc_attr( $shot_alt ); ?>" loading="lazy" width="1280" height="800">
+			<?php elseif ( $shot_wait ) : ?>
+				<p class="genready-wait" data-genready-screenshot-wait data-genready-scan="<?php echo esc_attr( $open_scan ); ?>" data-genready-alt="<?php echo esc_attr( $shot_alt ); ?>"><span class="spinner is-active" aria-hidden="true"></span><?php esc_html_e( 'Making the screenshot…', 'genready' ); ?></p>
 			<?php else : ?>
 				<p><?php esc_html_e( 'This scan has no screenshot.', 'genready' ); ?></p>
 			<?php endif; ?>
 		</div>
 		<div class="genready-aiview__panel" data-genready-panel="text"<?php echo 'text' === $first ? '' : ' hidden'; ?>>
 			<?php if ( null !== $markdown ) : ?>
-				<pre class="genready-ai-text" tabindex="0"><?php echo esc_html( $markdown ); ?></pre>
+				<?php if ( '' !== $formatted ) : ?>
+					<div class="genready-ai-text genready-ai-text--formatted" data-genready-text="formatted" tabindex="0"><?php echo $formatted; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markdown::to_html() filters the HTML with wp_kses. ?></div>
+				<?php endif; ?>
+				<pre class="genready-ai-text" data-genready-text="raw" tabindex="0"<?php echo '' !== $formatted ? ' hidden' : ''; ?>><?php echo esc_html( $markdown ); ?></pre>
+				<?php if ( '' !== $formatted ) : ?>
+					<p><button type="button" class="button-link" data-genready-toggle="raw-text" data-genready-other="<?php esc_attr_e( 'Show the formatted text', 'genready' ); ?>"><?php esc_html_e( 'Show the raw text', 'genready' ); ?></button></p>
+				<?php endif; ?>
 				<?php if ( ! empty( $ai_view['truncated'] ) ) : ?>
 					<p class="description"><?php esc_html_e( 'The text is long, so GenReady shows only the first part.', 'genready' ); ?></p>
 				<?php endif; ?>
@@ -191,7 +215,7 @@ $sections   = array(
 							<?php endif; ?>
 						</span>
 						<?php if ( in_array( $check['fix'] ?? null, array( 'robots', 'llms', 'jsonld' ), true ) ) : ?>
-							<a class="genready-check__fix" href="<?php echo esc_url( $fixes_url . '#genready-' . $check['fix'] ); ?>"><?php esc_html_e( 'Fix with one click', 'genready' ); ?></a>
+							<a class="genready-check__fix" href="<?php echo esc_attr( '#genready-' . $check['fix'] ); ?>"><?php esc_html_e( 'Fix with one click', 'genready' ); ?></a>
 						<?php endif; ?>
 					</li>
 				<?php endforeach; ?>
@@ -214,3 +238,27 @@ $sections   = array(
 		<?php endif; ?>
 	</p>
 </div>
+<?php
+if ( array() !== $cards ) {
+	$found = array();
+	foreach ( (array) ( $report['sections'] ?? array() ) as $checks ) {
+		foreach ( (array) $checks as $check ) {
+			$fix_kind = is_array( $check ) ? (string) ( $check['fix'] ?? '' ) : '';
+			if ( in_array( $fix_kind, array( 'robots', 'llms', 'jsonld' ), true ) ) {
+				$found[ $fix_kind ][] = array(
+					'name'   => (string) ( $check['name'] ?? '' ),
+					'reason' => (string) ( $check['reason'] ?? '' ),
+				);
+			}
+		}
+	}
+	$fixes_html = Page::view(
+		'fixes',
+		array(
+			'connected' => $connected,
+			'cards'     => $cards,
+			'found'     => $found,
+		)
+	);
+	echo $fixes_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
+}

@@ -140,7 +140,7 @@ class RestOnboardingTest extends RestTestCase {
 
 	public function test_scan_limit_is_a_429_with_the_limit_text(): void {
 		$this->client->public_result = new ApiError( 429, 'RATE_LIMITED', '', array( 'retryAfterSeconds' => 0 ) );
-		$this->assert_error( $this->rest()->scan( new FakeRequest() ), 'Scan again tomorrow, or create a free account.', 429 );
+		$this->assert_error( $this->rest()->scan( new FakeRequest() ), "You used today's free scans. Create a free account for 25 scans a month.", 429 );
 	}
 
 	public function test_report_without_a_connection_reads_the_stored_scan_with_its_token(): void {
@@ -257,15 +257,15 @@ class RestOnboardingTest extends RestTestCase {
 
 	public function test_cards_without_a_connection_ask_for_an_account(): void {
 		$card = FixCards::without_account( array( 'applied' => true, 'message' => 'a refusal' ) );
-		$this->assertSame( 'Create a free account first. GenReady Pro and Agency generate this file. Undo works without a connection.', $card['message'] );
+		$this->assertSame( 'Fixes come with GenReady Pro and Agency. Create a free account first, then upgrade when you are ready. Undo works without a connection.', $card['message'] );
 		$this->assertTrue( $card['account_link'] );
-		$this->assertSame( 'Create a free account first. GenReady Pro and Agency generate this file.', FixCards::without_account( array( 'applied' => false ) )['message'] );
+		$this->assertSame( 'Fixes come with GenReady Pro and Agency. Create a free account first, then upgrade when you are ready.', FixCards::without_account( array( 'applied' => false ) )['message'] );
 	}
 
 	public function test_undo_without_a_connection_returns_the_account_text(): void {
 		$this->fixes->put( 'robots', array( 'mode' => 'virtual', 'content' => "User-agent: GPTBot\n", 'base_sha256' => str_repeat( 'a', 64 ), 'status' => 'applied' ) );
 		$result = $this->fix( $this->rest(), 'robots', 'undo' );
-		$this->assertSame( 'Create a free account first. GenReady Pro and Agency generate this file.', $result['card']['message'] );
+		$this->assertSame( 'Fixes come with GenReady Pro and Agency. Create a free account first, then upgrade when you are ready.', $result['card']['message'] );
 		$this->assertTrue( $result['card']['account_link'] );
 	}
 }

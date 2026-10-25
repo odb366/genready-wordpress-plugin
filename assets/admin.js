@@ -16,6 +16,9 @@
 	var __ = wp.i18n && wp.i18n.__ ? wp.i18n.__ : function ( text ) {
 		return text;
 	};
+	var sprintf = wp.i18n && wp.i18n.sprintf ? wp.i18n.sprintf : function ( format, value ) {
+		return format.replace( '%d', value );
+	};
 	var root = document.querySelector( '.genready-admin' );
 
 	if ( ! apiFetch || ! data.ns || ! root ) {
@@ -25,6 +28,8 @@
 	var PRICING_URL = 'https://genready.ai/pricing';
 	var POLL_MS = 5000;
 	var POLL_LIMIT_MS = 180000;
+	var SHOT_POLL_MS = 10000;
+	var SHOT_LIMIT_MS = 180000;
 	var PLAN_CODES = [ 'PLAN_REQUIRED', 'DOMAIN_LIMIT_REACHED', 'CREDITS_EXHAUSTED' ];
 	var WRITE_CODES = [ 'CANNOT_WRITE', 'WRITE_FAILED' ];
 	var FILE_NAMES = { robots: 'robots.txt', llms: 'llms.txt' };
@@ -111,6 +116,35 @@
 			region.appendChild( holder );
 		}
 		region.focus();
+	}
+
+	/**
+	 * "Analyzing the page…" with a spinner and the seconds since the start.
+	 * Screen readers hear the text once; the seconds are hidden from them.
+	 * The count stops when the next say() replaces the message.
+	 *
+	 * @param {HTMLElement} region Element with role="status".
+	 */
+	function progress( region ) {
+		say( region, __( 'Analyzing the page…', 'genready' ), 'info' );
+		var line = region.querySelector( 'p' );
+		var spinner = make( 'span', 'spinner is-active' );
+		var seconds = make( 'span', 'genready-elapsed' );
+		spinner.setAttribute( 'aria-hidden', 'true' );
+		seconds.setAttribute( 'aria-hidden', 'true' );
+		line.classList.add( 'genready-wait' );
+		line.insertBefore( spinner, line.firstChild );
+		line.appendChild( seconds );
+		region.appendChild( make( 'p', 'description', __( 'This usually takes 5 to 30 seconds.', 'genready' ) ) );
+		var started = Date.now();
+		var timer = window.setInterval( function () {
+			if ( ! region.contains( seconds ) ) {
+				window.clearInterval( timer );
+				return;
+			}
+			/* translators: %d: seconds since the scan started. */
+			seconds.textContent = sprintf( __( '%d s', 'genready' ), Math.round( ( Date.now() - started ) / 1000 ) );
+		}, 1000 );
 	}
 
 	function plansLink() {
@@ -344,7 +378,7 @@
 
 	// Scan a page ('' = the home page) and poll it.
 	async function scan( region, url ) {
-		say( region, __( 'Scanning this page. This takes about 30 seconds.', 'genready' ), 'info' );
+		progress( region );
 		try {
 			var result = await call( 'POST', '/scan', url ? { url: url } : null );
 			await poll( region, result && typeof result.scan_id === 'string' ? result.scan_id : '' );
@@ -413,10 +447,64 @@
 
 	/* ---------- Overview ---------- */
 
+	/**
+	 * GenReady makes the screenshot after the report. Ask for the report every
+	 * 10 seconds for up to 3 minutes and show the screenshot when it is there.
+	 *
+	 * @param {HTMLElement} wait The "Making the screenshot…" line.
+	 */
+	function waitForScreenshot( wait ) {
+		var scanId = wait.getAttribute( 'data-genready-scan' ) || '';
+		var path = '/report' + ( scanId ? '?scan=' + encodeURIComponent( scanId ) : '' );
+		var started = Date.now();
+		var tick = async function () {
+			var view = null;
+			try {
+				var state = await call( 'GET', path );
+				view = state && state.report && state.report.ai_view ? state.report.ai_view : null;
+			} catch ( error ) {
+				view = { screenshot_pending: true };
+			}
+			if ( view && typeof view.screenshot === 'string' && /^https?:\/\//.test( view.screenshot ) ) {
+				var image = make( 'img', 'genready-shot' );
+				image.src = view.screenshot;
+				image.alt = wait.getAttribute( 'data-genready-alt' ) || '';
+				image.width = 1280;
+				image.height = 800;
+				wait.replaceWith( image );
+				return;
+			}
+			if ( ! view || ! view.screenshot_pending || Date.now() - started > SHOT_LIMIT_MS ) {
+				wait.replaceWith( make( 'p', null, __( 'This scan has no screenshot.', 'genready' ) ) );
+				return;
+			}
+			window.setTimeout( tick, SHOT_POLL_MS );
+		};
+		window.setTimeout( tick, SHOT_POLL_MS );
+	}
+
 	function initOverview() {
 		onAction( root, 'scan', function ( button ) {
 			return scan( setupLine( 'scan' ), button.getAttribute( 'data-genready-url' ) || '' );
 		}, connectionButtons );
+
+		var wait = root.querySelector( '[data-genready-screenshot-wait]' );
+		if ( wait ) {
+			waitForScreenshot( wait );
+		}
+
+		var rawToggle = root.querySelector( '[data-genready-toggle="raw-text"]' );
+		if ( rawToggle ) {
+			rawToggle.addEventListener( 'click', function () {
+				var formatted = root.querySelector( '[data-genready-text="formatted"]' );
+				var raw = root.querySelector( '[data-genready-text="raw"]' );
+				var label = rawToggle.textContent;
+				formatted.hidden = ! formatted.hidden;
+				raw.hidden = ! raw.hidden;
+				rawToggle.textContent = rawToggle.getAttribute( 'data-genready-other' );
+				rawToggle.setAttribute( 'data-genready-other', label );
+			} );
+		}
 
 		var toggles = root.querySelectorAll( '[data-genready-view]' );
 		toggles.forEach( function ( button ) {
@@ -774,6 +862,7 @@
 		errorText: errorText,
 		busy: busy,
 		poll: poll,
+		progress: progress,
 		connectionButtons: connectionButtons,
 	};
 

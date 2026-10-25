@@ -4,7 +4,7 @@
 # Usage: bash e2e/run-all.sh [work-dir]
 #   work-dir: where the release copy and the release zip are built
 #             (default e2e/test-results/work, which git ignores).
-#   GENREADY_E2E_RELEASE: folder with a genready-1.0.0.zip to test instead of building one.
+#   GENREADY_E2E_RELEASE: folder with a genready.zip to test instead of building one.
 #
 # Needs the local GenReady test server on 127.0.0.1:5002 and the test accounts in
 # ~/.genready-e2e-users.json. GENREADY_E2E_SEED points to seed-users.cjs: it makes the Pro account
@@ -42,7 +42,9 @@ RELEASE=${GENREADY_E2E_RELEASE:-}
 if [ -z "$RELEASE" ]; then
 	RELEASE="$WORK/release"
 	mkdir -p "$RELEASE"
-	(cd "$WORK" && python3 -I -c 'import shutil; shutil.make_archive("release/genready-1.0.0", "zip", ".", "genready")')
+	# The same build as the GitHub release, under a name without the version.
+	zip=$(bash "$ROOT/bin/build-zip.sh" "$WORK/dist" | sed -n 's/^zip=//p')
+	cp "$zip" "$RELEASE/genready.zip"
 fi
 
 failed=0
@@ -106,10 +108,10 @@ seed pro
 
 # admin.js busy states: a page without WordPress, no Playground needed.
 start=$(date +%s)
-if (cd "$E2E_DIR" && npx playwright test specs/admin-busy.spec.ts specs/onboarding-ui.spec.ts); then
-	printf '| %-30s | %-26s | %-3s | PASS | %4ss |\n' "admin-busy, onboarding-ui (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
+if (cd "$E2E_DIR" && npx playwright test specs/admin-busy.spec.ts specs/onboarding-ui.spec.ts specs/overview-ui.spec.ts); then
+	printf '| %-30s | %-26s | %-3s | PASS | %4ss |\n' "browser specs (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
 else
-	printf '| %-30s | %-26s | %-3s | FAIL | %4ss |\n' "admin-busy, onboarding-ui (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
+	printf '| %-30s | %-26s | %-3s | FAIL | %4ss |\n' "browser specs (no WordPress)" "-" "-" "$(($(date +%s) - start))" | tee -a "$SUMMARY"
 	failed=1
 fi
 

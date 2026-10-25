@@ -16,7 +16,8 @@ use GenReady\Verification\MetaTag;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Registers Settings → GenReady with the Overview, Fixes and Connection tabs,
+ * Registers Settings → GenReady with the Overview and Account tabs (the fix
+ * cards sit on the Overview, under the results),
  * loads the script and style on that page only, and shows the one notice on
  * the Plugins screen.
  */
@@ -25,8 +26,8 @@ final class Page {
 	const SLUG = 'genready';
 	/** Hook suffix of the page. */
 	const HOOK = 'settings_page_genready';
-	/** The tabs, in order. */
-	const TABS = array( 'overview', 'fixes', 'connection' );
+	/** The tabs, in order. The Account tab keeps the slug "connection". */
+	const TABS = array( 'overview', 'connection' );
 	/** Views that view() may render. */
 	const VIEWS = array( 'overview', 'fixes', 'connection', 'start', 'scan-form', 'banner' );
 
@@ -67,7 +68,7 @@ final class Page {
 	 */
 	private $state = null;
 	/**
-	 * The fix cards of the Fixes tab, built on the load hook. Null until built.
+	 * The fix cards of the Overview, built on the load hook. Null until built.
 	 *
 	 * @var array[]|null
 	 */
@@ -110,9 +111,18 @@ final class Page {
 	 * runs do_robots(), which sends a Content-Type header.
 	 */
 	public function prepare(): void {
-		if ( 'fixes' === $this->tab() && current_user_can( 'manage_options' ) ) {
+		if ( 'overview' === $this->tab() && current_user_can( 'manage_options' ) && $this->shows_fixes() ) {
 			$this->fix_cards();
 		}
+	}
+
+	/**
+	 * Whether the Overview shows the fix cards: with a connection, or without
+	 * one once a scan is stored (not on the first screen, not while paused).
+	 */
+	private function shows_fixes(): bool {
+		$connected = null !== $this->store->load();
+		return 'overview' === $this->view_name( 'overview', $connected );
 	}
 
 	/**
@@ -188,8 +198,7 @@ final class Page {
 		echo '<nav class="nav-tab-wrapper" aria-label="' . esc_attr__( 'GenReady sections', 'genready' ) . '">';
 		$labels = array(
 			'overview'   => __( 'Overview', 'genready' ),
-			'fixes'      => __( 'Fixes', 'genready' ),
-			'connection' => __( 'Connection', 'genready' ),
+			'connection' => __( 'Account', 'genready' ),
 		);
 		foreach ( self::TABS as $name ) {
 			printf(
@@ -222,7 +231,7 @@ final class Page {
 	}
 
 	/**
-	 * The current tab.
+	 * The current tab. The old Fixes tab opens the Overview, which holds the fix cards now.
 	 */
 	private function tab(): string {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only tab switch.
@@ -260,6 +269,7 @@ final class Page {
 			return array(
 				'connected' => true,
 				'state'     => $this->state(),
+				'cards'     => $this->fix_cards(),
 			);
 		}
 		if ( 'start' === $name || 'overview' === $name ) {
@@ -270,16 +280,9 @@ final class Page {
 				'email'       => $this->user_email(),
 				'scans'       => $this->scans->all(),
 				'state'       => 'overview' === $name ? $this->state() : array( 'state' => 'none' ),
+				'cards'       => 'overview' === $name ? $this->fix_cards() : array(),
 				// The scripts loaded the only scan, GenReady said it is gone, and the list is empty now (spec 11).
 				'notice'      => 'start' === $name && 'gone' === ( $this->state['state'] ?? '' ) ? (string) ( $this->state['message'] ?? '' ) : '',
-			);
-		}
-		if ( 'fixes' === $tab ) {
-			return array(
-				'connected'    => $connected,
-				// The Overview is the first screen (not paused, no stored scan), which has no account form.
-				'first_screen' => ! $connected && 'start' === $this->view_name( 'overview', false ),
-				'cards'        => $this->fix_cards(),
 			);
 		}
 		return array(
