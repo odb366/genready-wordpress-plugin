@@ -282,7 +282,6 @@
 	border-left: 4px solid #2271b1;
 }
 
-.genready-admin .genready-scan-form input[type="url"],
 .genready-admin .genready-account-form input[type="email"] {
 	width: 100%;
 	max-width: 32rem;
@@ -363,4 +362,24 @@
 .genready-admin .genready-elapsed {
 	color: #646970;
 	font-variant-numeric: tabular-nums;
+}
+
+/* "Page to analyze": a wide field with the button on the same row. */
+.genready-admin .genready-scan-form__label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+.genready-admin .genready-scan-form__row {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	max-width: 960px;
+}
+
+.genready-admin .genready-scan-form__row input[type="url"] {
+	flex: 1 1 24rem;
+	min-width: 0;
 }

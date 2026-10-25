@@ -140,7 +140,7 @@ class RestOnboardingTest extends RestTestCase {
 
 	public function test_scan_limit_is_a_429_with_the_limit_text(): void {
 		$this->client->public_result = new ApiError( 429, 'RATE_LIMITED', '', array( 'retryAfterSeconds' => 0 ) );
-		$this->assert_error( $this->rest()->scan( new FakeRequest() ), 'Scan again tomorrow, or create a free account.', 429 );
+		$this->assert_error( $this->rest()->scan( new FakeRequest() ), "You used today's free scans. Create a free account for 25 scans a month.", 429 );
 	}
 
 	public function test_report_without_a_connection_reads_the_stored_scan_with_its_token(): void {

@@ -24,9 +24,9 @@ const PAGE = `<!doctype html><html><body>
 		<div id="genready-account-result" role="status" aria-live="polite" tabindex="-1"></div>
 	</section>
 	<form id="genready-scan-form" novalidate data-genready-onboarding>
-		<label for="genready-page-url">Page address</label>
+		<label for="genready-page-url">Page to analyze</label>
 		<input type="url" id="genready-page-url" value="https://site.test/" data-genready-input="url">
-		<button type="submit" data-genready-action="check">Check this page</button>
+		<button type="submit" data-genready-action="check">Check AI readiness</button>
 	</form>
 	<div id="genready-scan-result" role="status" aria-live="polite" tabindex="-1"></div>
 	<button type="button" data-genready-action="show-connect" aria-expanded="false" aria-controls="genready-connect-panel">Already have a GenReady account? Connect</button>
@@ -88,16 +88,19 @@ async function settle(
 	}, outcome);
 }
 
-test('Check this page: Enter submits, the poll uses the scan ID, then the report opens', async ({
+test('Check AI readiness: Enter submits, the poll uses the scan ID, then the report opens', async ({
 	page,
 }) => {
 	await open(page);
-	const field = page.getByLabel('Page address');
+	const field = page.getByLabel('Page to analyze');
 	await field.fill('https://site.test/pricing/');
 	await field.press('Enter');
-	await expect(page.locator('#genready-scan-result')).toHaveText(
-		'Scanning this page. This takes about 30 seconds.',
-	);
+	const result = page.locator('#genready-scan-result');
+	await expect(result).toContainText('Analyzing the page…');
+	await expect(result).toContainText('This usually takes 5 to 30 seconds.');
+	await expect(result.locator('.spinner')).toHaveAttribute('aria-hidden', 'true');
+	await page.clock.runFor(3_000);
+	await expect(result.locator('.genready-elapsed')).toHaveText('3 s');
 	await expect(page.getByRole('button', { name: 'Create my free account' })).toBeDisabled();
 	expect(await settle(page, { value: { scan_id: SCAN_ID } })).toEqual({
 		path: '/genready/v1/scan',
@@ -115,7 +118,7 @@ test('Check this page: Enter submits, the poll uses the scan ID, then the report
 
 test('both forms stay disabled until the scan poll ends', async ({ page }) => {
 	await open(page);
-	const check = page.getByRole('button', { name: 'Check this page' });
+	const check = page.getByRole('button', { name: 'Check AI readiness' });
 	const create = page.getByRole('button', { name: 'Create my free account' });
 	await check.click();
 	await settle(page, { value: { scan_id: SCAN_ID } });
@@ -131,14 +134,16 @@ test('both forms stay disabled until the scan poll ends', async ({ page }) => {
 test('a scan error gets the focus; a 503 hides both forms and opens Connect', async ({ page }) => {
 	await open(page);
 	const region = page.locator('#genready-scan-result');
-	await page.getByRole('button', { name: 'Check this page' }).click();
+	await page.getByRole('button', { name: 'Check AI readiness' }).click();
 	await settle(page, {
 		code: 'RATE_LIMITED',
-		message: 'Scan again tomorrow, or create a free account.',
+		message: "You used today's free scans. Create a free account for 25 scans a month.",
 	});
-	await expect(region).toHaveText('Scan again tomorrow, or create a free account.');
+	await expect(region).toContainText("You used today's free scans. Create a free account for 25 scans a month.");
 	await expect(region).toBeFocused();
-	await page.getByRole('button', { name: 'Check this page' }).click();
+	await region.getByRole('button', { name: 'Create my free account' }).click();
+	await expect(page.getByLabel('Email')).toBeFocused();
+	await page.getByRole('button', { name: 'Check AI readiness' }).click();
 	await settle(page, {
 		code: 'WP_ONBOARDING_OFF',
 		message: 'GenReady paused free scans for now. Connect with a GenReady account.',
@@ -155,7 +160,7 @@ test('Create my free account: success opens the Overview again', async ({ page }
 	await open(page);
 	await page.getByLabel('Email').press('Enter');
 	await expect(page.locator('#genready-account-result')).toHaveText('Creating your account.');
-	await expect(page.getByRole('button', { name: 'Check this page' })).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Check AI readiness' })).toBeDisabled();
 	expect(await settle(page, { value: { ok: true } })).toEqual({
 		path: '/genready/v1/account',
 		method: 'POST',

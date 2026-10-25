@@ -1,5 +1,5 @@
 /**
- * GenReady admin page without a connection: "Check this page" and
+ * GenReady admin page without a connection: "Check AI readiness" and
  * "Create my free account" (spec 4.1 to 4.6).
  *
  * admin.js loads first and shares its helpers as window.genreadyAdmin.ui.
@@ -78,6 +78,25 @@
 	}
 
 	/**
+	 * "Create my free account" after the daily limit: moves the focus to the
+	 * email field of the account form. Null on the first screen, which has no form.
+	 *
+	 * @return {HTMLButtonElement|null} The button.
+	 */
+	function accountButton() {
+		var email = accountForm ? accountForm.querySelector( '[data-genready-input="email"]' ) : null;
+		if ( ! email ) {
+			return null;
+		}
+		var button = ui.makeButton( __( 'Create my free account', 'genready' ), 'button button-primary' );
+		button.addEventListener( 'click', function () {
+			email.scrollIntoView( { block: 'center' } );
+			email.focus();
+		} );
+		return button;
+	}
+
+	/**
 	 * Show a refusal and the next step (spec 4.6).
 	 *
 	 * @param {HTMLElement} region The status region of the form.
@@ -87,6 +106,10 @@
 		var code = ui.errorCode( error );
 		if ( code === 'ACCOUNT_EXISTS' || code === 'VERIFIED_ELSEWHERE' ) {
 			ui.say( region, ui.errorText( error ), 'error', signInButton( region ) );
+			return;
+		}
+		if ( code === 'RATE_LIMITED' && region === scanResult ) {
+			ui.say( region, ui.errorText( error ), 'warning', accountButton() || undefined );
 			return;
 		}
 		ui.say( region, ui.errorText( error ), 'error' );

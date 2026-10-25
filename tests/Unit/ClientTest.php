@@ -147,7 +147,7 @@ class ClientTest extends TestCase {
 
 	public function test_verified_elsewhere_message(): void {
 		$result = $this->error_for( 409, array( 'code' => 'VERIFIED_ELSEWHERE', 'message' => 'x' ) );
-		$this->assertSame( 'This site is connected to another GenReady account.', $result->user_message() );
+		$this->assertSame( 'This site is verified in another GenReady account. Sign in with that account, or remove the site from it and try again.', $result->user_message() );
 	}
 
 	public function test_unsafe_merge_without_details_uses_server_message(): void {

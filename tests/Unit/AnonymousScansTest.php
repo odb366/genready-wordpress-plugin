@@ -108,18 +108,17 @@ class AnonymousScansTest extends TestCase {
 
 	public function test_limit_text_uses_the_time_on_the_same_day_and_tomorrow_after_midnight(): void {
 		$morning = ( new \DateTime( '2026-10-16 10:00:00', new \DateTimeZone( 'Europe/Sofia' ) ) )->getTimestamp();
-		$this->assertSame( 'Scan again after 11:00, or create a free account.', AnonymousScans::limit_message( 3600, $morning ) );
+		$this->assertSame( 'Free scans start again at 11:00. Create a free account for 25 scans a month.', AnonymousScans::limit_message( 3600, $morning ) );
 		// 23:30 in Sofia is still 2026-10-16 in UTC (20:30), but the wait ends on 2026-10-17 in the site's time zone.
 		$night = ( new \DateTime( '2026-10-16 23:30:00', new \DateTimeZone( 'Europe/Sofia' ) ) )->getTimestamp();
-		$this->assertSame( 'Scan again tomorrow, or create a free account.', AnonymousScans::limit_message( 3600, $night ) );
-		$this->assertSame( 'Scan again tomorrow, or create a free account.', AnonymousScans::limit_message( 0, $morning ) );
+		$this->assertSame( "You used today's free scans. Create a free account for 25 scans a month.", AnonymousScans::limit_message( 3600, $night ) );
+		$this->assertSame( "You used today's free scans. Create a free account for 25 scans a month.", AnonymousScans::limit_message( 0, $morning ) );
 	}
 
 	public function test_start_429_gives_the_limit_text(): void {
 		$this->client->public_result = new ApiError( 429, 'RATE_LIMITED', '', array( 'retryAfterSeconds' => 60 ) );
 		$result                      = $this->scans()->start( 'https://example.com/' );
-		$this->assertStringStartsWith( 'Scan again ', $result['error'] );
-		$this->assertStringEndsWith( ', or create a free account.', $result['error'] );
+		$this->assertStringEndsWith( ' Create a free account for 25 scans a month.', $result['error'] );
 		$this->assertSame( 429, $result['status'] );
 	}
 
@@ -139,7 +138,7 @@ class AnonymousScansTest extends TestCase {
 		Monkey\Functions\when( 'wp_date' )->alias( function ( $format ) { return 'Y-m-d' === $format ? '2026-10-16' : '11:00'; } );
 		foreach ( array( '3600', 3600.0, 3600 ) as $wait ) {
 			$this->client->public_result = new ApiError( 429, 'RATE_LIMITED', '', array( 'retryAfterSeconds' => $wait ) );
-			$this->assertSame( 'Scan again after 11:00, or create a free account.', $this->scans()->start( 'https://example.com/' )['error'], var_export( $wait, true ) );
+			$this->assertSame( 'Free scans start again at 11:00. Create a free account for 25 scans a month.', $this->scans()->start( 'https://example.com/' )['error'], var_export( $wait, true ) );
 		}
 	}
 

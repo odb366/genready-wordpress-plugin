@@ -87,7 +87,7 @@ final class ApiError {
 				return __( 'This site was removed from your GenReady account. Reconnect to add it again.', 'genready' );
 			case 409:
 				if ( 'VERIFIED_ELSEWHERE' === $this->code ) {
-					return __( 'This site is connected to another GenReady account.', 'genready' );
+					return __( 'This site is verified in another GenReady account. Sign in with that account, or remove the site from it and try again.', 'genready' );
 				}
 				if ( 'NOT_VERIFIED' === $this->code ) {
 					return __( 'Verify this site first.', 'genready' );

@@ -189,7 +189,7 @@ final class Page {
 		$labels = array(
 			'overview'   => __( 'Overview', 'genready' ),
 			'fixes'      => __( 'Fixes', 'genready' ),
-			'connection' => __( 'Connection', 'genready' ),
+			'connection' => __( 'Account', 'genready' ),
 		);
 		foreach ( self::TABS as $name ) {
 			printf(

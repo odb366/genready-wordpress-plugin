@@ -88,7 +88,7 @@ class SiteSetupTest extends TestCase {
 	public function test_verify_maps_api_errors(): void {
 		$this->connect();
 		$this->client->request_result = new ApiError( 409, 'VERIFIED_ELSEWHERE', '' );
-		$this->assertSame( array( 'error' => 'This site is connected to another GenReady account.', 'code' => 'VERIFIED_ELSEWHERE', 'status' => 409 ), $this->setup_object()->verify() );
+		$this->assertSame( array( 'error' => 'This site is verified in another GenReady account. Sign in with that account, or remove the site from it and try again.', 'code' => 'VERIFIED_ELSEWHERE', 'status' => 409 ), $this->setup_object()->verify() );
 	}
 
 	public function test_verify_fetches_missing_token_first(): void {

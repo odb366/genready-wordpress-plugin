@@ -27,7 +27,7 @@ $open_scan = (string) ( $state['scan_id'] ?? '' );
 
 if ( ! $connected ) {
 	echo Page::view( 'banner', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
-	echo '<section class="genready-card genready-check" aria-label="' . esc_attr__( 'Check this page', 'genready' ) . '">';
+	echo '<section class="genready-card genready-check" aria-label="' . esc_attr__( 'Check AI readiness', 'genready' ) . '">';
 	echo Page::view( 'scan-form', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
 	echo '</section>';
 	if ( count( $scans ) >= 2 ) :

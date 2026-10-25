@@ -255,11 +255,12 @@ class PageTest extends TestCase {
 		Monkey\Functions\expect( 'wp_remote_request' )->never();
 		$html = $this->render();
 		$this->assertStringContainsString( '<h2 id="genready-start-title">See how AI search engines and agents read your site</h2>', $html );
-		$this->assertStringContainsString( '<label for="genready-page-url">Page address</label>', $html );
+		$this->assertStringContainsString( '<label for="genready-page-url" class="genready-scan-form__label">Page to analyze</label>', $html );
+		$this->assertStringContainsString( 'Enter the address of any public page on this site.', $html );
 		$this->assertStringContainsString( 'type="url" id="genready-page-url"', $html );
 		$this->assertStringContainsString( 'value="https://example.com/"', $html );
 		$this->assertStringContainsString( '<option value="https://example.com/sample-page/"></option>', $html );
-		$this->assertStringContainsString( 'Check this page', $html );
+		$this->assertStringContainsString( 'Check AI readiness', $html );
 		$this->assertStringContainsString( 'Sends your site address to genready.ai. No account needed.', $html );
 		$this->assertStringContainsString( 'https://genready.ai/terms', $html );
 		$this->assertStringContainsString( 'Already have a GenReady account? Connect', $html );
@@ -279,7 +280,7 @@ class PageTest extends TestCase {
 		$this->assertStringContainsString( 'type="email" id="genready-account-email" class="regular-text" value="admin@example.com"', $html );
 		$this->assertStringContainsString( 'Create my free account', $html );
 		$this->assertStringContainsString( 'Creates a GenReady account for this email and adds this site to it. GenReady emails you a link to set your password.', $html );
-		$this->assertStringContainsString( 'Check this page', $html );
+		$this->assertStringContainsString( 'Check AI readiness', $html );
 		$this->assertStringNotContainsString( 'Recent scans', $html, 'only with 2 or more scans' );
 		$this->assertStringContainsString( 'How AI sees your homepage', $html );
 		$this->assertSame( self::TOKEN, $this->client->publics[0][3] );
