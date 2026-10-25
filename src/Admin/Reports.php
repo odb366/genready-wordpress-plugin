@@ -26,6 +26,8 @@ class Reports {
 	const ACCOUNT_CACHE = 'genready_account_cache';
 	/** Seconds a report or the account facts are kept. */
 	const TTL = 300;
+	/** Seconds after a scan in which the page still waits for its screenshot. */
+	const SCREENSHOT_WAIT = 180;
 	/** Pattern of a report ID (the server accepts UUIDs only). */
 	const UUID = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
 	/** Longest reason text shown for one check. */
@@ -168,7 +170,9 @@ class Reports {
 
 	/**
 	 * A 2xx answer as a state: pending while the scan runs, else the trimmed
-	 * report, cached for 5 minutes.
+	 * report, cached for 5 minutes. GenReady makes the screenshot after the
+	 * report, so a report that waits for its screenshot is not cached: the
+	 * page asks again until the screenshot is there (SCREENSHOT_WAIT).
 	 *
 	 * @param string $id     Report ID.
 	 * @param array  $result The `data` of the answer.
@@ -179,14 +183,16 @@ class Reports {
 			return array( 'state' => 'pending' );
 		}
 		$report = self::summarize( $result );
-		set_transient(
-			SiteSetup::REPORT_CACHE,
-			array(
-				'id'     => $id,
-				'report' => $report,
-			),
-			self::TTL
-		);
+		if ( ! $report['ai_view']['screenshot_pending'] ) {
+			set_transient(
+				SiteSetup::REPORT_CACHE,
+				array(
+					'id'     => $id,
+					'report' => $report,
+				),
+				self::TTL
+			);
+		}
 		return array(
 			'state'  => 'complete',
 			'report' => $report,
@@ -280,7 +286,7 @@ class Reports {
 				'bonus'    => max( 0, (int) ( is_numeric( $ar['bonusPoints'] ?? null ) ? $ar['bonusPoints'] : 0 ) ),
 			),
 			'sections'     => self::sections( $scores, $data['fixChecklist'] ?? null ),
-			'ai_view'      => self::ai_view( $data['aiView'] ?? null ),
+			'ai_view'      => self::ai_view( $data['aiView'] ?? null, false === $time ? 0 : $time ),
 			'report_link'  => '' === $id ? '' : GENREADY_API_BASE . '/report/' . $id,
 		);
 	}
@@ -379,17 +385,22 @@ class Reports {
 	/**
 	 * The AI view block.
 	 *
-	 * @param mixed $view The report's aiView.
-	 * @return array array( 'markdown' => string|null, 'truncated' => bool, 'screenshot' => string|null, 'gap' => int|null ).
+	 * @param mixed $view       The report's aiView.
+	 * @param int   $scanned_at Unix time the scan ended, or 0.
+	 * @return array array( 'markdown' => string|null, 'truncated' => bool, 'screenshot' => string|null,
+	 *               'screenshot_pending' => bool, 'gap' => int|null ). screenshot_pending is true while a
+	 *               report without a screenshot is younger than SCREENSHOT_WAIT.
 	 */
-	private static function ai_view( $view ): array {
-		$view = is_array( $view ) ? $view : array();
-		$gap  = is_array( $view['jsGap'] ?? null ) ? ( $view['jsGap']['gapPercent'] ?? null ) : null;
+	private static function ai_view( $view, int $scanned_at ): array {
+		$view       = is_array( $view ) ? $view : array();
+		$gap        = is_array( $view['jsGap'] ?? null ) ? ( $view['jsGap']['gapPercent'] ?? null ) : null;
+		$screenshot = is_string( $view['screenshotUrl'] ?? null ) ? self::screenshot_url( $view['screenshotUrl'], GENREADY_API_BASE ) : null;
 		return array(
-			'markdown'   => is_string( $view['markdown'] ?? null ) ? $view['markdown'] : null,
-			'truncated'  => true === ( $view['markdownTruncated'] ?? false ),
-			'screenshot' => is_string( $view['screenshotUrl'] ?? null ) ? self::screenshot_url( $view['screenshotUrl'], GENREADY_API_BASE ) : null,
-			'gap'        => is_numeric( $gap ) ? max( 0, min( 100, (int) round( (float) $gap ) ) ) : null,
+			'markdown'           => is_string( $view['markdown'] ?? null ) ? $view['markdown'] : null,
+			'truncated'          => true === ( $view['markdownTruncated'] ?? false ),
+			'screenshot'         => $screenshot,
+			'screenshot_pending' => null === $screenshot && $scanned_at > 0 && time() - $scanned_at < self::SCREENSHOT_WAIT,
+			'gap'                => is_numeric( $gap ) ? max( 0, min( 100, (int) round( (float) $gap ) ) ) : null,
 		);
 	}
 

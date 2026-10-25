@@ -308,3 +308,59 @@
 	color: #50575e;
 	overflow-wrap: anywhere;
 }
+
+/* The text AI crawlers read, formatted. */
+.genready-ai-text--formatted {
+	font-family: inherit;
+	font-size: 14px;
+	line-height: 1.6;
+	padding: 4px 16px;
+	white-space: normal;
+}
+
+.genready-ai-text--formatted h3,
+.genready-ai-text--formatted h4,
+.genready-ai-text--formatted h5,
+.genready-ai-text--formatted h6 {
+	margin: 1.2em 0 0.4em;
+}
+
+.genready-ai-text--formatted table {
+	border-collapse: collapse;
+	margin: 8px 0;
+}
+
+.genready-ai-text--formatted th,
+.genready-ai-text--formatted td {
+	border: 1px solid var(--genready-border);
+	padding: 4px 8px;
+	text-align: left;
+}
+
+.genready-ai-text--formatted blockquote {
+	border-left: 4px solid var(--genready-border);
+	margin: 8px 0;
+	padding-left: 12px;
+}
+
+.genready-ai-text--formatted pre {
+	overflow-x: auto;
+	white-space: pre;
+}
+
+/* A wait with a spinner: a running scan, a screenshot on its way. */
+.genready-admin .genready-wait {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+}
+
+.genready-admin .genready-wait .spinner {
+	float: none;
+	margin: 0;
+}
+
+.genready-admin .genready-elapsed {
+	color: #646970;
+	font-variant-numeric: tabular-nums;
+}

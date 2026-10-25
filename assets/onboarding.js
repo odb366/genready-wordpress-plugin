@@ -114,7 +114,7 @@
 			var input = scanForm.querySelector( '[data-genready-input="url"]' );
 			var submit = scanForm.querySelector( '[data-genready-action="check"]' );
 			ui.busy( submit, async function () {
-				ui.say( scanResult, __( 'Scanning this page. This takes about 30 seconds.', 'genready' ), 'info' );
+				ui.progress( scanResult );
 				try {
 					var result = await ui.call( 'POST', '/scan', { url: input ? input.value : '' } );
 					await ui.poll( scanResult, result && typeof result.scan_id === 'string' ? result.scan_id : '' );

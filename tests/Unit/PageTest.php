@@ -38,6 +38,7 @@ class PageTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		Monkey\Functions\when( 'wp_kses' )->returnArg( 1 );
 		$this->options    = array();
 		$this->transients = array();
 		$this->scripts    = array();

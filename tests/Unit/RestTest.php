@@ -237,6 +237,39 @@ class RestTest extends RestTestCase {
 		$this->assertCount( 1, $this->client->requests );
 	}
 
+	/** A report without its screenshot yet, finished $seconds ago. */
+	private function report_without_screenshot( int $seconds ): array {
+		$report                            = report_fixture( array( 'completedAt' => gmdate( 'Y-m-d\TH:i:s.000\Z', time() - $seconds ) ) );
+		$report['aiView']['screenshotUrl'] = null;
+		return $report;
+	}
+
+	public function test_new_report_without_screenshot_is_not_cached_and_says_the_screenshot_is_coming(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID );
+		$this->client->request_result       = $this->report_without_screenshot( 20 );
+		$result                             = $this->rest()->report( new FakeRequest() );
+		$this->assertNull( $result['report']['ai_view']['screenshot'] );
+		$this->assertTrue( $result['report']['ai_view']['screenshot_pending'] );
+		$this->assertArrayNotHasKey( 'genready_report_cache', $this->transients );
+		// The next load asks GenReady again, so the screenshot shows when it is ready.
+		$this->client->request_result = report_fixture( array( 'completedAt' => gmdate( 'Y-m-d\TH:i:s.000\Z', time() - 30 ) ) );
+		$result                       = $this->rest()->report( new FakeRequest() );
+		$this->assertCount( 2, $this->client->requests );
+		$this->assertSame( 'https://genready.ai/screenshots/a.png', $result['report']['ai_view']['screenshot'] );
+		$this->assertFalse( $result['report']['ai_view']['screenshot_pending'] );
+		$this->assertSame( self::REPORT_ID, $this->transients['genready_report_cache']['id'] );
+	}
+
+	public function test_old_report_without_screenshot_is_cached_and_waits_no_more(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID );
+		$this->client->request_result       = $this->report_without_screenshot( 600 );
+		$result                             = $this->rest()->report( new FakeRequest() );
+		$this->assertFalse( $result['report']['ai_view']['screenshot_pending'] );
+		$this->assertSame( self::REPORT_ID, $this->transients['genready_report_cache']['id'] );
+	}
+
 	public function test_report_failed_shows_the_server_message(): void {
 		$this->connect();
 		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID );

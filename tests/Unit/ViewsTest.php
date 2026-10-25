@@ -14,6 +14,7 @@ class ViewsTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		Monkey\Functions\when( 'wp_kses' )->returnArg( 1 );
 		$escape = function ( $s ) { return htmlspecialchars( (string) $s, ENT_QUOTES ); };
 		foreach ( array( 'esc_html', 'esc_attr', 'esc_textarea' ) as $fn ) {
 			Monkey\Functions\when( $fn )->alias( $escape );
@@ -94,6 +95,46 @@ class ViewsTest extends TestCase {
 		$this->assertStringNotContainsString( 'javascript:', $html );
 	}
 
+	private function overview_for( array $report ): string {
+		return Page::view(
+			'overview',
+			array(
+				'connected' => true,
+				'state'     => array(
+					'state'  => 'complete',
+					'report' => $report,
+				),
+			)
+		);
+	}
+
+	public function test_ai_text_is_formatted_with_the_raw_text_behind_a_toggle(): void {
+		$html = $this->overview_for( Reports::summarize( report_fixture() ) );
+		$this->assertStringContainsString( 'data-genready-text="formatted"', $html );
+		$this->assertStringContainsString( '<h3>Home</h3>', $html );
+		$this->assertMatchesRegularExpression( '#<pre class="genready-ai-text" data-genready-text="raw" tabindex="0" hidden>\# Home#', $html );
+		$this->assertStringContainsString( 'data-genready-toggle="raw-text"', $html );
+		$this->assertStringContainsString( 'Show the raw text', $html );
+	}
+
+	public function test_a_new_report_without_screenshot_shows_the_wait_line_first(): void {
+		$fixture                            = report_fixture( array( 'completedAt' => gmdate( 'Y-m-d\TH:i:s.000\Z', time() - 10 ) ) );
+		$fixture['aiView']['screenshotUrl'] = null;
+		$html                               = $this->overview_for( Reports::summarize( $fixture ) );
+		$this->assertStringContainsString( 'data-genready-screenshot-wait', $html );
+		$this->assertStringContainsString( 'Making the screenshot…', $html );
+		$this->assertStringNotContainsString( 'This scan has no screenshot.', $html );
+		$this->assertStringContainsString( 'data-genready-view="screenshot" aria-pressed="true"', $html );
+	}
+
+	public function test_an_old_report_without_screenshot_says_so(): void {
+		$fixture                            = report_fixture();
+		$fixture['aiView']['screenshotUrl'] = null;
+		$html                               = $this->overview_for( Reports::summarize( $fixture ) );
+		$this->assertStringNotContainsString( 'data-genready-screenshot-wait', $html );
+		$this->assertStringContainsString( 'This scan has no screenshot.', $html );
+	}
+
 	public function test_overview_states_without_a_report(): void {
 		foreach ( array( array( 'state' => 'none' ), array( 'state' => 'pending' ), array( 'state' => 'failed', 'message' => self::XSS ), array( 'state' => 'error', 'message' => self::XSS ) ) as $state ) {
 			$html = Page::view(
@@ -111,7 +152,7 @@ class ViewsTest extends TestCase {
 	public function test_a_running_scan_has_the_same_text_with_and_without_a_connection(): void {
 		foreach ( array( true, false ) as $connected ) {
 			$html = Page::view( 'overview', array( 'connected' => $connected, 'state' => array( 'state' => 'pending' ) ) );
-			$this->assertStringContainsString( '<p>Scanning this page. This takes about 30 seconds.</p>', $html );
+			$this->assertStringContainsString( 'Analyzing the page…</p>', $html );
 			$this->assertStringNotContainsString( 'home page', $html );
 		}
 	}
