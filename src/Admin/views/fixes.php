@@ -21,7 +21,7 @@ $found     = is_array( $view['found'] ?? null ) ? $view['found'] : array();
 ?>
 <section class="genready-fixes" id="genready-fixes" aria-labelledby="genready-fixes-title">
 	<h2 id="genready-fixes-title"><?php esc_html_e( 'Fixes', 'genready' ); ?></h2>
-	<p class="genready-fixes__intro"><?php esc_html_e( 'Fixes add what AI search engines and agents look for on your site. GenReady writes each change for you. You see it first, nothing changes until you click Apply, and Undo puts the old version back.', 'genready' ); ?></p>
+	<p class="genready-fixes__intro"><?php esc_html_e( 'Fixes add what AI search engines and agents look for on your site. GenReady writes each change, and nothing goes live until you click Apply. Undo puts the old version back.', 'genready' ); ?></p>
 	<?php foreach ( $cards as $card ) : ?>
 		<?php
 		$kind = (string) ( $card['kind'] ?? '' );

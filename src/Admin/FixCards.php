@@ -187,7 +187,7 @@ class FixCards {
 	public static function about( string $kind ): string {
 		switch ( $kind ) {
 			case 'robots':
-				return __( 'Your robots.txt tells crawlers what they may read. If it blocks AI crawlers, ChatGPT, Claude and Perplexity cannot read or cite your pages. This fix adds clear rules for AI crawlers and a Content-Signal line that says how AI may use your content. The rules for Google, Bing and other search engines stay the same.', 'genready' );
+				return __( 'Your robots.txt tells crawlers what they may read. If it blocks AI crawlers, ChatGPT, Claude and Perplexity cannot read or cite your pages. This fix adds rules for AI crawlers and a Content-Signal line that says how AI may use your content. The rules for Google, Bing and other search engines stay the same.', 'genready' );
 			case 'llms':
 				return __( 'llms.txt is a short guide to your site for AI tools. It lists your main pages with a one-line summary each, so AI agents find the right page instead of guessing.', 'genready' );
 			case 'jsonld':
