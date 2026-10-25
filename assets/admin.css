@@ -383,3 +383,49 @@
 	flex: 1 1 24rem;
 	min-width: 0;
 }
+
+/* Fixes, on the Overview under the results. */
+.genready-admin .genready-fixes {
+	margin-top: 32px;
+}
+
+.genready-admin .genready-fixes > h2 {
+	font-size: 1.3em;
+	margin: 0 0 4px;
+}
+
+.genready-admin .genready-fixes__intro {
+	color: #50575e;
+	font-size: 14px;
+	margin: 0 0 16px;
+	max-width: 48rem;
+}
+
+.genready-admin .genready-fix h3 {
+	font-size: 1.15em;
+	margin: 0 0 8px;
+}
+
+.genready-admin .genready-fix__about {
+	font-size: 14px;
+	line-height: 1.6;
+	max-width: 48rem;
+}
+
+.genready-admin .genready-fix__found {
+	background: #fcf9e8;
+	border-left: 4px solid #dba617;
+	margin: 12px 0;
+	max-width: 48rem;
+	padding: 4px 12px;
+}
+
+.genready-admin .genready-fix__found ul {
+	list-style: disc;
+	margin: 0 0 8px 20px;
+}
+
+.genready-admin .genready-fix__found .genready-check__reason {
+	color: #50575e;
+	display: block;
+}

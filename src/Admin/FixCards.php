@@ -170,13 +170,30 @@ class FixCards {
 	 * @param array $card A card.
 	 */
 	public static function without_account( array $card ): array {
-		$message = __( 'Create a free account first. GenReady Pro and Agency generate this file.', 'genready' );
+		$message = __( 'Fixes come with GenReady Pro and Agency. Create a free account first, then upgrade when you are ready.', 'genready' );
 		if ( ! empty( $card['applied'] ) ) {
 			$message .= ' ' . __( 'Undo works without a connection.', 'genready' );
 		}
 		$card['message']      = $message;
 		$card['account_link'] = true;
 		return $card;
+	}
+
+	/**
+	 * What the fix does and why it matters, for the top of its card.
+	 *
+	 * @param string $kind 'robots', 'llms' or 'jsonld'.
+	 */
+	public static function about( string $kind ): string {
+		switch ( $kind ) {
+			case 'robots':
+				return __( 'Your robots.txt tells crawlers what they may read. If it blocks AI crawlers, ChatGPT, Claude and Perplexity cannot read or cite your pages. This fix adds clear rules for AI crawlers and a Content-Signal line that says how AI may use your content. The rules for Google, Bing and other search engines stay the same.', 'genready' );
+			case 'llms':
+				return __( 'llms.txt is a short guide to your site for AI tools. It lists your main pages with a one-line summary each, so AI agents find the right page instead of guessing.', 'genready' );
+			case 'jsonld':
+				return __( 'JSON-LD tells AI what a page is: an article, a product or a business, who wrote it and when. GenReady adds only what is missing. It never changes values from your theme or SEO plugin.', 'genready' );
+		}
+		return '';
 	}
 
 	/**

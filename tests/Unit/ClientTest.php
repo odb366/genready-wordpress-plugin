@@ -286,7 +286,7 @@ class ClientTest extends TestCase {
 				$this->assertArrayNotHasKey( 'Authorization', $args['headers'] );
 				$this->assertSame( 0, $args['redirection'] );
 				$this->assertSame( 15, $args['timeout'] );
-				$this->assertSame( 'GenReady-WordPress/1.0.0; WordPress/6.8', $args['headers']['User-Agent'] );
+				$this->assertSame( 'GenReady-WordPress/1.1.0; WordPress/6.8', $args['headers']['User-Agent'] );
 				$this->assertSame( array( 'pageUrl' => 'https://example.com/' ), json_decode( $args['body'], true ) );
 				return $this->response( 202, array( 'data' => array( 'scanId' => 'a', 'scanToken' => 'b' ), 'meta' => array() ) );
 			}

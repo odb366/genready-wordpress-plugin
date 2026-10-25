@@ -3,8 +3,9 @@
  * Overview tab: score card, AI view, sections and footer.
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: connected (bool), state (array from Reports::state(), or state 'error'), and without a
- * connection: home, suggestions, email, scans (from AnonymousScans::all()).
+ * $view: connected (bool), state (array from Reports::state(), or state 'error'), cards (fix cards
+ * for the Fixes section, may be empty), and without a connection: home, suggestions, email, scans
+ * (from AnonymousScans::all()).
  *
  * @package GenReady
  */
@@ -24,6 +25,7 @@ $report = 'complete' === ( $state['state'] ?? '' ) && is_array( $state['report']
 $connected = ! empty( $view['connected'] );
 $scans     = is_array( $view['scans'] ?? null ) ? $view['scans'] : array();
 $open_scan = (string) ( $state['scan_id'] ?? '' );
+$cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
 
 if ( ! $connected ) {
 	echo Page::view( 'banner', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
@@ -71,6 +73,16 @@ if ( null === $report ) :
 		<?php endif; ?>
 	</section>
 	<?php
+	if ( array() !== $cards ) {
+		$fixes_html = Page::view(
+			'fixes',
+			array(
+				'connected' => $connected,
+				'cards'     => $cards,
+			)
+		);
+		echo $fixes_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
+	}
 	return;
 endif;
 
@@ -85,7 +97,6 @@ $first      = null !== $screenshot || $shot_wait ? 'screenshot' : 'text';
 $formatted  = null !== $markdown ? Markdown::to_html( $markdown ) : '';
 $is_home    = '' === (string) ( $report['url'] ?? '' ) || PageUrl::is_home( (string) $report['url'] );
 $shot_alt   = $is_home ? __( 'Screenshot of your homepage', 'genready' ) : __( 'Screenshot of this page', 'genready' );
-$fixes_url  = admin_url( 'options-general.php?page=genready&tab=fixes' );
 $verdicts   = array(
 	'pass' => __( 'Pass', 'genready' ),
 	'warn' => __( 'Warning', 'genready' ),
@@ -204,7 +215,7 @@ $sections   = array(
 							<?php endif; ?>
 						</span>
 						<?php if ( in_array( $check['fix'] ?? null, array( 'robots', 'llms', 'jsonld' ), true ) ) : ?>
-							<a class="genready-check__fix" href="<?php echo esc_url( $fixes_url . '#genready-' . $check['fix'] ); ?>"><?php esc_html_e( 'Fix with one click', 'genready' ); ?></a>
+							<a class="genready-check__fix" href="<?php echo esc_attr( '#genready-' . $check['fix'] ); ?>"><?php esc_html_e( 'Fix with one click', 'genready' ); ?></a>
 						<?php endif; ?>
 					</li>
 				<?php endforeach; ?>
@@ -227,3 +238,27 @@ $sections   = array(
 		<?php endif; ?>
 	</p>
 </div>
+<?php
+if ( array() !== $cards ) {
+	$found = array();
+	foreach ( (array) ( $report['sections'] ?? array() ) as $checks ) {
+		foreach ( (array) $checks as $check ) {
+			$fix_kind = is_array( $check ) ? (string) ( $check['fix'] ?? '' ) : '';
+			if ( in_array( $fix_kind, array( 'robots', 'llms', 'jsonld' ), true ) ) {
+				$found[ $fix_kind ][] = array(
+					'name'   => (string) ( $check['name'] ?? '' ),
+					'reason' => (string) ( $check['reason'] ?? '' ),
+				);
+			}
+		}
+	}
+	$fixes_html = Page::view(
+		'fixes',
+		array(
+			'connected' => $connected,
+			'cards'     => $cards,
+			'found'     => $found,
+		)
+	);
+	echo $fixes_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
+}
