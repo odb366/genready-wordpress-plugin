@@ -1,0 +1,85 @@
+# Publish a GitHub release when a push to main changes the plugin version.
+#
+# The release is tag v<version> on the pushed commit, with the zip from
+# bin/build-zip.sh and its SHA-256. Plugin Check must pass first. A version
+# that already has a tag is never released again. "Run workflow" releases the
+# current version by hand when its tag does not exist yet.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Decide
+        id: decide
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          version_of() { sed -n 's/^ \* Version:[[:space:]]*\([^[:space:]]*\).*/\1/p'; }
+          version=$(version_of < genready.php)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+            echo "Tag v$version exists. Nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$EVENT" = "push" ]; then
+            previous=$(git show "$BEFORE:genready.php" 2> /dev/null | version_of || true)
+            if [ "$previous" = "$version" ]; then
+              echo "The version is still $version. Nothing to release."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "Releasing $version."
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build the zip
+        if: steps.decide.outputs.release == 'true'
+        run: bin/build-zip.sh "$RUNNER_TEMP/dist"
+
+      - name: Plugin Check
+        if: steps.decide.outputs.release == 'true'
+        uses: WordPress/plugin-check-action@10857da14b6c2246d15402b3e69f777edcf8c12e # v1.1.9
+        with:
+          build-dir: ${{ runner.temp }}/dist/genready
+          slug: genready
+
+      - name: Create the release
+        if: steps.decide.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.decide.outputs.version }}
+        run: |
+          zip="$RUNNER_TEMP/dist/genready-$VERSION.zip"
+          sha=$(cut -d ' ' -f 1 "$zip.sha256")
+          {
+            sed -n "/^= $VERSION =\$/,/^= /{/^= /d;p}" readme.txt
+            echo
+            echo "**Install:** download \`genready-$VERSION.zip\` below. In WordPress, open Plugins → Add New → Upload Plugin, select the zip, then click Install Now and Activate."
+            echo
+            echo "Do not install \"Source code (zip)\". It is the repository, not the plugin."
+            echo
+            echo "SHA-256 of \`genready-$VERSION.zip\`: \`$sha\`"
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" "$zip" "$zip.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "GenReady $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md"
