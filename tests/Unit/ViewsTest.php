@@ -381,7 +381,7 @@ class ViewsTest extends TestCase {
 				),
 			)
 		);
-		$this->assertStringContainsString( 'href="#genready-jsonld">Fix with one click</a>', $html );
+		$this->assertStringContainsString( '<a class="button genready-check__fix" href="#genready-jsonld">Fix with one click</a>', $html );
 		$this->assertStringNotContainsString( 'tab=fixes', $html );
 		$this->assertLessThan( strpos( $html, 'id="genready-fixes"' ), strpos( $html, 'genready-footer' ), 'results first' );
 		$this->assertStringContainsString( 'Schema Markup', substr( $html, (int) strpos( $html, 'id="genready-fixes"' ) ), 'the JSON-LD card lists the schema problem' );

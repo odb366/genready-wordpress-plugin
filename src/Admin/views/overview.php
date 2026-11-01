@@ -216,7 +216,7 @@ $sections   = array(
 							<?php endif; ?>
 						</span>
 						<?php if ( in_array( $check['fix'] ?? null, array( 'robots', 'llms', 'jsonld' ), true ) ) : ?>
-							<a class="genready-check__fix" href="<?php echo esc_attr( '#genready-' . $check['fix'] ); ?>"><?php esc_html_e( 'Fix with one click', 'genready' ); ?></a>
+							<a class="button genready-check__fix" href="<?php echo esc_attr( '#genready-' . $check['fix'] ); ?>"><?php esc_html_e( 'Fix with one click', 'genready' ); ?></a>
 						<?php endif; ?>
 					</li>
 				<?php endforeach; ?>
