@@ -13,10 +13,10 @@ const SHOT = 'https://genready.ai/screenshots/a.png';
 const PAGE = `<!doctype html><html><body>
 <div class="genready-admin">
 	<div id="genready-setup" hidden></div>
-	<div data-genready-panel="screenshot">
+	<div class="genready-shot-frame">
 		<p class="genready-wait" data-genready-screenshot-wait data-genready-scan="${SCAN_ID}" data-genready-alt="Screenshot of your homepage"><span class="spinner is-active" aria-hidden="true"></span>Making the screenshot…</p>
 	</div>
-	<div data-genready-panel="text">
+	<div class="genready-aiview__panel">
 		<div data-genready-text="formatted" tabindex="0"><h3>Home</h3><p>Hello</p></div>
 		<pre data-genready-text="raw" tabindex="0" hidden># Home
 Hello</pre>

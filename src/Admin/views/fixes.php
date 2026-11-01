@@ -78,9 +78,9 @@ $found     = is_array( $view['found'] ?? null ) ? $view['found'] : array();
 			<?php endif; ?>
 
 			<p class="genready-fix__actions">
-				<button type="button" class="button button-primary" data-genready-action="preview"<?php echo ( ! $connected || $blocked ) ? ' disabled' : ''; ?>><?php esc_html_e( 'Preview', 'genready' ); ?></button>
-				<button type="button" class="button button-primary" data-genready-action="apply" hidden><?php esc_html_e( 'Apply', 'genready' ); ?></button>
-				<button type="button" class="button" data-genready-action="undo"<?php echo $applied ? '' : ' disabled'; ?>><?php esc_html_e( 'Undo', 'genready' ); ?></button>
+				<button type="button" class="button button-primary" data-genready-action="apply"<?php echo ( ! $connected || $blocked ) ? ' disabled' : ''; ?>><?php esc_html_e( 'Apply', 'genready' ); ?></button>
+				<button type="button" class="button" data-genready-action="preview"<?php echo ( ! $connected || $blocked ) ? ' disabled' : ''; ?>><?php esc_html_e( 'Preview', 'genready' ); ?></button>
+				<button type="button" class="button" data-genready-action="undo"<?php echo $applied ? '' : ' hidden'; ?>><?php esc_html_e( 'Undo', 'genready' ); ?></button>
 				<?php if ( 'jsonld' !== $kind ) : ?>
 					<button type="button" class="button" data-genready-action="live-check"<?php echo ( ! empty( $card['live_check'] ) && $connected ) ? '' : ' hidden'; ?>><?php esc_html_e( 'Check the live file', 'genready' ); ?></button>
 				<?php endif; ?>

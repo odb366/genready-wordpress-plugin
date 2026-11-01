@@ -119,6 +119,24 @@ class RestTest extends RestTestCase {
 		$this->assertSame( 'pass', Reports::summarize( $fixture )['sections']['agents'][0]['verdict'] );
 	}
 
+	public function test_each_section_lists_failures_then_warnings_then_passes(): void {
+		$sections = Reports::summarize( report_fixture() )['sections'];
+		$this->assertSame( array( 'Schema Markup', 'Facts & Details' ), array_column( $sections['content'], 'name' ) );
+		$this->assertSame( array( 'LLM File', 'AI Access Rules' ), array_column( $sections['crawlability'], 'name' ) );
+	}
+
+	public function test_by_verdict_keeps_the_order_within_a_verdict(): void {
+		$checks = array(
+			array( 'name' => 'p1', 'verdict' => 'pass' ),
+			array( 'name' => 'w1', 'verdict' => 'warn' ),
+			array( 'name' => 'f1', 'verdict' => 'fail' ),
+			array( 'name' => 'p2', 'verdict' => 'pass' ),
+			array( 'name' => 'w2', 'verdict' => 'warn' ),
+			array( 'name' => 'f2', 'verdict' => 'fail' ),
+		);
+		$this->assertSame( array( 'f1', 'f2', 'w1', 'w2', 'p1', 'p2' ), array_column( Reports::by_verdict( $checks ), 'name' ) );
+	}
+
 	public function test_apply_uses_the_stored_preview_not_the_request_body(): void {
 		$this->connect();
 		$this->files->put( 'robots.txt', self::BASE );

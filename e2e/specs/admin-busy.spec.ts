@@ -14,10 +14,11 @@ function fixCard(kind: string, applied: boolean, blocked = false): string {
 		<span data-genready-field="state">${applied ? 'Applied' : 'Not applied'}</span>
 		<p data-genready-field="message" hidden></p>
 		<p data-genready-field="live" hidden></p>
+		${kind === 'robots' ? '<label><input type="checkbox" data-genready-input="content_signal" checked> Content-Signal</label>' : ''}
 		<p>
+			<button type="button" data-genready-action="apply"${blocked ? ' disabled' : ''}>Apply</button>
 			<button type="button" data-genready-action="preview"${blocked ? ' disabled' : ''}>Preview</button>
-			<button type="button" data-genready-action="apply" hidden>Apply</button>
-			<button type="button" data-genready-action="undo"${applied ? '' : ' disabled'}>Undo</button>
+			<button type="button" data-genready-action="undo"${applied ? '' : ' hidden'}>Undo</button>
 			<button type="button" data-genready-action="live-check">Check the live file</button>
 			<button type="button" data-genready-action="download" hidden>Download the file</button>
 		</p>
@@ -33,6 +34,7 @@ const PAGE = `<!doctype html><html><body>
 	<button type="button" data-genready-action="scan">Scan again</button>
 	${fixCard('robots', true)}
 	${fixCard('llms', false, true)}
+	${fixCard('jsonld', false)}
 	<section class="genready-connection">
 		<button type="button" data-genready-action="verify">Verify</button>
 		<button type="button" data-genready-action="remove-tag">Remove the verification tag</button>
@@ -104,7 +106,7 @@ test('a state change during the call survives the end of the busy state', async 
 		card: { state: 'not_applied', state_text: 'Not applied', message: '', applied: false, versions: [], live: null, live_check: false, can_write: true, as_file: false },
 	});
 	await expect(card(page, 'robots').locator('[data-genready-field="result"]')).toContainText('Undone.');
-	await expect(action(page, robots, 'undo')).toBeDisabled();
+	await expect(action(page, robots, 'undo')).toBeHidden();
 	await expect(action(page, robots, 'preview')).toBeEnabled();
 });
 
@@ -140,4 +142,68 @@ test('verify, scan and the connection actions lock each other', async ({ page })
 	await expect.poll(() => page.evaluate(() => (window as unknown as { genreadyCalls: unknown[] }).genreadyCalls.length)).toBe(1);
 	expect(await answer(page, { state: 'none' })).toBe('/genready/v1/report');
 	await expect(action(page, '.genready-connection', 'verify')).toBeEnabled();
+});
+
+const APPLIED_CARD = {
+	state: 'applied',
+	state_text: 'Applied',
+	message: '',
+	applied: true,
+	versions: [],
+	live: null,
+	live_check: false,
+	can_write: true,
+	as_file: false,
+};
+const READY_PREVIEW = { summary: ['Adds rules'], notes: [], diff: '+a', changed: true };
+
+test('Apply without a preview asks for one, applies it and shows Undo', async ({ page }) => {
+	await open(page);
+	const jsonld = '.genready-fix[data-kind="jsonld"]';
+	await expect(action(page, jsonld, 'undo')).toBeHidden();
+	await action(page, jsonld, 'apply').click();
+	expect(await answer(page, { summary: [], notes: [], code: '{}', fillable: [], changed: true })).toBe('/genready/v1/fixes/jsonld/preview');
+	await expect.poll(() => page.evaluate(() => (window as unknown as { genreadyCalls: unknown[] }).genreadyCalls.length)).toBe(1);
+	expect(await answer(page, { ok: true, card: APPLIED_CARD })).toBe('/genready/v1/fixes/jsonld/apply');
+	await expect(card(page, 'jsonld').locator('[data-genready-field="result"]')).toContainText('Applied.');
+	await expect(action(page, jsonld, 'undo')).toBeVisible();
+	await expect(card(page, 'jsonld').locator('[data-genready-field="preview"]')).toBeHidden();
+});
+
+test('Apply stops at the preview when there is nothing to apply', async ({ page }) => {
+	await open(page);
+	const robots = '.genready-fix[data-kind="robots"]';
+	await action(page, robots, 'apply').click();
+	expect(await answer(page, { summary: [], notes: [], diff: '', changed: false })).toBe('/genready/v1/fixes/robots/preview');
+	await expect(card(page, 'robots').locator('[data-genready-field="result"]')).toContainText('GenReady cannot apply this yet.');
+	await expect(card(page, 'robots').locator('[data-genready-field="preview"]')).toContainText('Nothing to change.');
+	await expect(action(page, robots, 'apply')).toBeEnabled();
+	expect(await page.evaluate(() => (window as unknown as { genreadyCalls: unknown[] }).genreadyCalls.length)).toBe(0);
+});
+
+test('Apply uses the preview on screen, and a changed choice asks for a new one', async ({ page }) => {
+	await open(page);
+	const robots = '.genready-fix[data-kind="robots"]';
+	await action(page, robots, 'preview').click();
+	await answer(page, READY_PREVIEW);
+	await action(page, robots, 'apply').click();
+	expect(await answer(page, { ok: true, card: APPLIED_CARD })).toBe('/genready/v1/fixes/robots/apply');
+
+	await action(page, robots, 'preview').click();
+	await answer(page, READY_PREVIEW);
+	await card(page, 'robots').locator('[data-genready-input="content_signal"]').uncheck();
+	await action(page, robots, 'apply').click();
+	expect(await answer(page, READY_PREVIEW)).toBe('/genready/v1/fixes/robots/preview');
+});
+
+test('Apply on JSON-LD with fields to fill in waits for the second click', async ({ page }) => {
+	await open(page);
+	const jsonld = '.genready-fix[data-kind="jsonld"]';
+	await action(page, jsonld, 'apply').click();
+	await answer(page, { summary: [], notes: [], code: '{}', fillable: ['name'], changed: true });
+	await expect(card(page, 'jsonld').locator('[data-genready-field="result"]')).toContainText('Fill in the missing fields');
+	expect(await page.evaluate(() => (window as unknown as { genreadyCalls: unknown[] }).genreadyCalls.length)).toBe(0);
+	await card(page, 'jsonld').locator('[data-genready-prop="name"]').fill('Example');
+	await action(page, jsonld, 'apply').click();
+	expect(await answer(page, { ok: true, card: APPLIED_CARD })).toBe('/genready/v1/fixes/jsonld/apply');
 });

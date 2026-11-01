@@ -70,7 +70,6 @@ class ViewsTest extends TestCase {
 		$this->assertStringContainsString( 'aria-label="AI Readiness: 72 of 100"', $html );
 		$this->assertStringContainsString( 'Agents 2/8 +3', $html );
 		$this->assertStringContainsString( 'AI crawlers that do not run JavaScript miss 42% of this page.', $html );
-		$this->assertStringContainsString( 'aria-pressed="true"', $html );
 		$this->assertStringContainsString( 'width="1280" height="800"', $html );
 		$this->assertStringContainsString( '#genready-jsonld', $html );
 		$this->assertStringContainsString( '#genready-llms', $html );
@@ -124,7 +123,26 @@ class ViewsTest extends TestCase {
 		$this->assertStringContainsString( 'data-genready-screenshot-wait', $html );
 		$this->assertStringContainsString( 'Making the screenshot…', $html );
 		$this->assertStringNotContainsString( 'This scan has no screenshot.', $html );
-		$this->assertStringContainsString( 'data-genready-view="screenshot" aria-pressed="true"', $html );
+		$this->assertMatchesRegularExpression( '#<div class="genready-shot-frame">\s*<p class="genready-wait" data-genready-screenshot-wait#', $html );
+	}
+
+	public function test_the_score_and_the_screenshot_share_one_card_and_the_text_has_its_own(): void {
+		$html  = $this->overview_for( Reports::summarize( report_fixture() ) );
+		$hero  = strpos( $html, 'class="genready-card genready-hero"' );
+		$score = strpos( $html, 'id="genready-score-title"' );
+		$shot  = strpos( $html, 'id="genready-shot-title"' );
+		$text  = strpos( $html, 'class="genready-card genready-aiview"' );
+		$this->assertNotFalse( $hero );
+		$this->assertTrue( $hero < $score && $score < $shot && $shot < $text, 'score, then screenshot, then the AI text card' );
+		$this->assertStringContainsString( 'Homepage screenshot', $html );
+		$this->assertStringNotContainsString( 'data-genready-view', $html, 'no Screenshot / What AI reads toggle' );
+		$this->assertStringNotContainsString( 'data-genready-panel', $html );
+	}
+
+	public function test_the_overview_lists_failures_first_in_each_section(): void {
+		$html = $this->overview_for( Reports::summarize( report_fixture() ) );
+		$this->assertLessThan( strpos( $html, 'Facts &amp; Details' ), strpos( $html, '<strong>Schema Markup</strong>' ) );
+		$this->assertLessThan( strpos( $html, '<strong>AI Access Rules</strong>' ), strpos( $html, '<strong>LLM File</strong>' ) );
 	}
 
 	public function test_an_old_report_without_screenshot_says_so(): void {
@@ -266,6 +284,16 @@ class ViewsTest extends TestCase {
 		$this->assertStringContainsString( 'data-genready-action="as-file">', $html );
 	}
 
+	public function test_apply_is_the_primary_action_and_undo_shows_only_when_applied(): void {
+		$card = array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied', 'message' => '', 'blocked' => false, 'applied' => false, 'versions' => array(), 'live' => null, 'live_check' => false, 'can_write' => true );
+		$html = Page::view( 'fixes', array( 'connected' => true, 'cards' => array( $card ) ) );
+		$this->assertMatchesRegularExpression( '#<button type="button" class="button button-primary" data-genready-action="apply">Apply</button>\s*<button type="button" class="button" data-genready-action="preview">Preview</button>#', $html );
+		$this->assertStringContainsString( 'data-genready-action="undo" hidden>', $html );
+		$card['applied'] = true;
+		$html            = Page::view( 'fixes', array( 'connected' => true, 'cards' => array( $card ) ) );
+		$this->assertStringContainsString( 'data-genready-action="undo">Undo</button>', $html );
+	}
+
 	// Fix round A, G5 L3: the screenshot comes only from GenReady's own host.
 
 	/**
@@ -303,6 +331,7 @@ class ViewsTest extends TestCase {
 		$this->assertStringNotContainsString( 'How AI sees your homepage', $html );
 		$this->assertStringContainsString( '<p class="genready-aiview__url">https://example.com/pricing/</p>', $html );
 		$this->assertStringContainsString( 'alt="Screenshot of this page"', $html );
+		$this->assertStringContainsString( 'Page screenshot', $html );
 		$this->assertStringContainsString( 'data-genready-url="https://example.com/pricing/"', $html );
 	}
 
@@ -320,6 +349,7 @@ class ViewsTest extends TestCase {
 		$this->assertStringContainsString( 'Fixes come with GenReady Pro and Agency.', $html );
 		$this->assertStringContainsString( '<a class="button button-primary" href="#genready-account">Create my free account</a>', $html );
 		$this->assertMatchesRegularExpression( '/data-genready-action="preview" disabled/', $html );
+		$this->assertMatchesRegularExpression( '/data-genready-action="apply" disabled/', $html );
 		$this->assertStringNotContainsString( 'Your scan found:', $html, 'no list without problems' );
 	}
 

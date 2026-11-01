@@ -42,25 +42,16 @@ test('connect with a Pro key: score, AI view, robots.txt apply and undo', async 
 	await expect(score.locator('.genready-score__items')).toContainText('Content');
 	await expect(score.locator('.genready-score__items')).toContainText('Crawlability');
 
-	const shotButton = page.getByRole('button', { name: 'Screenshot', exact: true });
-	const textButton = page.getByRole('button', { name: 'What AI reads' });
-	const shotPanel = page.locator('[data-genready-panel="screenshot"]');
-	const textPanel = page.locator('[data-genready-panel="text"]');
-	await textButton.click();
-	await expect(textButton).toHaveAttribute('aria-pressed', 'true');
-	await expect(shotButton).toHaveAttribute('aria-pressed', 'false');
-	await expect(textPanel).toBeVisible();
-	await expect(shotPanel).toBeHidden();
-	await expect(textPanel.locator('pre.genready-ai-text')).not.toBeEmpty();
-	await shotButton.click();
-	await expect(shotButton).toHaveAttribute('aria-pressed', 'true');
-	await expect(shotPanel).toBeVisible();
-	await expect(textPanel).toBeHidden();
+	// The screenshot sits next to the score; the text AI reads has its own card.
+	await expect(page.locator('.genready-hero').getByRole('heading', { name: 'Homepage screenshot' })).toBeVisible();
+	await expect(page.locator('.genready-hero .genready-shot-frame')).toBeVisible();
+	await expect(page.locator('.genready-aiview pre.genready-ai-text')).not.toBeEmpty();
 
 	// robots.txt: preview, apply, check the served file, undo.
 	await openGenReady(page, 'fixes');
 	const robots = card(page, 'robots');
 	await expect(robots.state).toHaveText('Not applied');
+	await expect(robots.button('undo')).toBeHidden();
 	await robots.button('preview').click();
 	await expect(robots.result).toContainText('Check the preview, then click Apply.');
 	const diff = await robots.preview.locator('pre.genready-diff').innerText();

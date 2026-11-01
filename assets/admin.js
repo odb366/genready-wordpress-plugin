@@ -505,19 +505,6 @@
 				rawToggle.setAttribute( 'data-genready-other', label );
 			} );
 		}
-
-		var toggles = root.querySelectorAll( '[data-genready-view]' );
-		toggles.forEach( function ( button ) {
-			button.addEventListener( 'click', function () {
-				var view = button.getAttribute( 'data-genready-view' );
-				toggles.forEach( function ( other ) {
-					other.setAttribute( 'aria-pressed', other === button ? 'true' : 'false' );
-				} );
-				root.querySelectorAll( '[data-genready-panel]' ).forEach( function ( panel ) {
-					panel.hidden = panel.getAttribute( 'data-genready-panel' ) !== view;
-				} );
-			} );
-		} );
 	}
 
 	/* ---------- Fix cards ---------- */
@@ -665,7 +652,7 @@
 		} );
 		versions.hidden = ! list.firstChild;
 
-		setDisabled( cardAction( card, 'undo' ), ! info.applied );
+		cardAction( card, 'undo' ).hidden = ! info.applied;
 		var check = cardAction( card, 'live-check' );
 		if ( check ) {
 			check.hidden = ! info.live_check;
@@ -704,15 +691,16 @@
 
 	/*
 	 * Card actions. Each gets the card context: card, kind, result (status
-	 * region), apply (the Apply button) and path (the REST path of the kind).
+	 * region), path (the REST path of the kind) and previewed (true while the
+	 * preview on screen is the one the server keeps for Apply).
 	 */
 
 	async function cardPreview( ctx ) {
-		ctx.apply.hidden = true;
+		ctx.previewed = false;
 		try {
 			var preview = await call( 'POST', ctx.path + 'preview', previewBody( ctx.card, ctx.kind ) );
 			var ready = renderPreview( ctx.card, ctx.kind, preview );
-			ctx.apply.hidden = ! ready;
+			ctx.previewed = ready;
 			say( ctx.result, ready ? __( 'Check the preview, then click Apply.', 'genready' ) : __( 'GenReady cannot apply this preview yet. Read the preview for the reason.', 'genready' ), ready ? 'info' : 'warning' );
 		} catch ( error ) {
 			field( ctx.card, 'preview' ).hidden = true;
@@ -720,11 +708,37 @@
 		}
 	}
 
+	/**
+	 * Apply without a preview on screen: the server applies only a preview it
+	 * keeps, so ask for one first. Stop and show it when it cannot be applied,
+	 * or when it has JSON-LD fields to fill in.
+	 *
+	 * @param {Object} ctx Card context.
+	 * @return {Promise<boolean>} True when Apply can go on.
+	 */
+	async function previewForApply( ctx ) {
+		var preview = await call( 'POST', ctx.path + 'preview', previewBody( ctx.card, ctx.kind ) );
+		var ready = renderPreview( ctx.card, ctx.kind, preview );
+		if ( ! ready ) {
+			say( ctx.result, __( 'GenReady cannot apply this yet. Read the preview for the reason.', 'genready' ), 'warning' );
+			return false;
+		}
+		if ( ctx.kind === 'jsonld' && strings( preview.fillable ).length ) {
+			ctx.previewed = true;
+			say( ctx.result, __( 'Fill in the missing fields, or leave them empty. Then click Apply.', 'genready' ), 'info' );
+			return false;
+		}
+		return true;
+	}
+
 	async function cardApply( ctx ) {
 		try {
+			if ( ! ctx.previewed && ! ( await previewForApply( ctx ) ) ) {
+				return;
+			}
 			var answer = await call( 'POST', ctx.path + 'apply', ctx.kind === 'jsonld' ? { values: fillValues( ctx.card ) } : {} );
+			ctx.previewed = false;
 			updateCard( ctx.card, answer.card );
-			ctx.apply.hidden = true;
 			field( ctx.card, 'preview' ).hidden = true;
 			say( ctx.result, ctx.kind === 'jsonld' ? __( 'Applied.', 'genready' ) : __( 'Applied. Check the live file in a minute.', 'genready' ), 'success' );
 		} catch ( error ) {
@@ -753,8 +767,8 @@
 	async function cardUndo( ctx ) {
 		try {
 			var answer = await call( 'POST', ctx.path + 'undo' );
+			ctx.previewed = false;
 			updateCard( ctx.card, answer.card );
-			ctx.apply.hidden = true;
 			field( ctx.card, 'preview' ).hidden = true;
 			say( ctx.result, __( 'Undone.', 'genready' ), 'success' );
 		} catch ( error ) {
@@ -777,6 +791,7 @@
 		try {
 			await call( 'POST', ctx.path + 'preview', previewBody( ctx.card, ctx.kind ) );
 			var answer = await call( 'POST', ctx.path + 'apply', { as_file: true } );
+			ctx.previewed = false;
 			updateCard( ctx.card, answer.card );
 			say( ctx.result, __( 'GenReady wrote llms.txt as a file. Check the live file in a minute.', 'genready' ), 'success' );
 		} catch ( error ) {
@@ -799,9 +814,17 @@
 			card: card,
 			kind: kind,
 			result: field( card, 'result' ),
-			apply: cardAction( card, 'apply' ),
 			path: '/fixes/' + kind + '/',
+			previewed: false,
 		};
+		// A changed summary or Content-Signal choice makes the preview on screen old.
+		card.querySelectorAll( '[data-genready-input]' ).forEach( function ( input ) {
+			var stale = function () {
+				ctx.previewed = false;
+			};
+			input.addEventListener( 'input', stale );
+			input.addEventListener( 'change', stale );
+		} );
 		var group = function () {
 			return cardButtons( card );
 		};
