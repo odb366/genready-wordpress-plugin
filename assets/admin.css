@@ -43,10 +43,12 @@
 
 /* Score card */
 
+/* Centred like the score on genready.ai: the large ring with its band under it, then the row of smaller rings. */
 .genready-score__main {
 	align-items: center;
 	display: flex;
-	gap: 20px;
+	flex-direction: column;
+	gap: 8px;
 }
 
 .genready-band {
@@ -65,13 +67,17 @@
 	display: flex;
 	flex-wrap: wrap;
 	gap: 12px;
+	justify-content: center;
 	list-style: none;
 	margin: 20px 0 0;
 	padding: 16px 0 0;
 }
 
 .genready-score__items li {
+	flex: 1 1 0;
 	margin: 0;
+	max-width: 160px;
+	min-width: 110px;
 }
 
 .genready-score__item {
@@ -81,8 +87,8 @@
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	min-width: 110px;
 	padding: 12px;
+	text-align: center;
 	text-decoration: none;
 }
 
@@ -107,10 +113,11 @@
 	border-radius: 50%;
 	color: var(--genready-badge-text);
 	display: flex;
+	font-size: 18px;
 	font-weight: 700;
-	height: 64px;
+	height: 80px;
 	justify-content: center;
-	width: 64px;
+	width: 80px;
 }
 
 /* AI view */
@@ -164,6 +171,11 @@
 	word-break: break-word;
 }
 
+/* The AI text card: a shorter box, so the results below come into view sooner. */
+.genready-aiview .genready-ai-text {
+	max-height: 340px;
+}
+
 /* Sections */
 
 .genready-checks {
@@ -173,7 +185,7 @@
 }
 
 .genready-check {
-	align-items: baseline;
+	align-items: center;
 	border-top: 1px solid #f0f0f1;
 	display: flex;
 	flex-wrap: wrap;
