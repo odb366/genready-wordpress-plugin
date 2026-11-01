@@ -8,7 +8,7 @@ test('site hidden from search engines: the robots.txt card explains and offers n
 	const robots = card(page, 'robots');
 	await expect(robots.message).toHaveText('This site asks search engines not to index it (Settings → Reading), so GenReady does not open it to AI crawlers.');
 	await expect(robots.button('preview')).toBeDisabled();
-	await expect(robots.button('apply')).toBeHidden();
+	await expect(robots.button('apply')).toBeDisabled();
 	// The llms.txt card is not blocked by this setting.
 	await expect(card(page, 'llms').button('preview')).toBeEnabled();
 });

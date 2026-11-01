@@ -314,7 +314,8 @@ class Reports {
 	}
 
 	/**
-	 * The three sections of checks.
+	 * The three sections of checks. In each section the failed checks come
+	 * first, then the warnings, then the passed checks.
 	 *
 	 * @param array $scores    The report's scores.
 	 * @param mixed $checklist The fix checklist (null on plans without it).
@@ -362,7 +363,34 @@ class Reports {
 				(string) $key
 			);
 		}
-		return $sections;
+		return array_map( array( self::class, 'by_verdict' ), $sections );
+	}
+
+	/**
+	 * Checks in the order fail, warn, pass. Checks with the same verdict keep
+	 * their order. usort() is not stable before PHP 8.0, so the position breaks ties.
+	 *
+	 * @param array[] $checks Checks from check().
+	 * @return array[]
+	 */
+	public static function by_verdict( array $checks ): array {
+		$rank   = array(
+			'fail' => 0,
+			'warn' => 1,
+			'pass' => 2,
+		);
+		$order  = array();
+		$checks = array_values( $checks );
+		foreach ( $checks as $index => $check ) {
+			$order[] = array( $rank[ $check['verdict'] ?? '' ] ?? 1, $index );
+		}
+		uksort(
+			$checks,
+			static function ( $a, $b ) use ( $order ): int {
+				return $order[ $a ] <=> $order[ $b ];
+			}
+		);
+		return array_values( $checks );
 	}
 
 	/**

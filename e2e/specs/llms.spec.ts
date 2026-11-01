@@ -46,5 +46,5 @@ test('llms.txt with Yoast llms.txt on: no preview or apply, and the setting is n
 	const llms = card(page, 'llms');
 	await expect(llms.message).toHaveText("Yoast SEO already makes your llms.txt. To use GenReady's file, turn this off: Yoast SEO → Settings → Site features → AI tools → llms.txt.");
 	await expect(llms.button('preview')).toBeDisabled();
-	await expect(llms.button('apply')).toBeHidden();
+	await expect(llms.button('apply')).toBeDisabled();
 });

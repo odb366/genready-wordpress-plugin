@@ -25,7 +25,10 @@ test('Free key: no report yet, and the robots.txt fix is for Pro and Agency', as
 	await robots.button('preview').click();
 	await expect(robots.result).toContainText('GenReady Pro and Agency generate this file.');
 	await expect(robots.result.getByRole('link', { name: 'See plans' })).toBeVisible();
-	await expect(robots.button('apply')).toBeHidden();
+	await expect(robots.preview).toBeHidden();
+	// Apply without a preview asks for one first, so it gives the same answer.
+	await robots.button('apply').click();
+	await expect(robots.result).toContainText('GenReady Pro and Agency generate this file.');
 	await expect(robots.preview).toBeHidden();
 	await expect(robots.state).toHaveText('Not applied');
 	await expect(page.locator('.genready-admin')).not.toContainText(/unlock/i);

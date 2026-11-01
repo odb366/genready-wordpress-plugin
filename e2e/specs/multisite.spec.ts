@@ -50,7 +50,7 @@ test('sub-site admin: the shared files are refused and nothing is written', asyn
 	const llms = card(page, 'llms');
 	await expect(llms.message).toHaveText(NETWORK_LLMS);
 	await expect(llms.button('preview')).toBeDisabled();
-	await expect(llms.button('apply')).toBeHidden();
+	await expect(llms.button('apply')).toBeDisabled();
 	await expect(llms.button('as-file')).toBeHidden();
 	// In a subdirectory network a sub-site lives in a subfolder, so robots.txt gives the subfolder refusal.
 	const robots = card(page, 'robots');

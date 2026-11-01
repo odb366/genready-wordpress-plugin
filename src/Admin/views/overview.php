@@ -93,7 +93,6 @@ $screenshot = is_string( $ai_view['screenshot'] ?? null ) ? $ai_view['screenshot
 $markdown   = is_string( $ai_view['markdown'] ?? null ) ? $ai_view['markdown'] : null;
 $gap        = is_int( $ai_view['gap'] ?? null ) ? $ai_view['gap'] : null;
 $shot_wait  = null === $screenshot && ! empty( $ai_view['screenshot_pending'] );
-$first      = null !== $screenshot || $shot_wait ? 'screenshot' : 'text';
 $formatted  = null !== $markdown ? Markdown::to_html( $markdown ) : '';
 $is_home    = '' === (string) ( $report['url'] ?? '' ) || PageUrl::is_home( (string) $report['url'] );
 $shot_alt   = $is_home ? __( 'Screenshot of your homepage', 'genready' ) : __( 'Screenshot of this page', 'genready' );
@@ -109,54 +108,65 @@ $sections   = array(
 );
 ?>
 <div class="genready-overview">
-	<section class="genready-card genready-score" aria-labelledby="genready-score-title">
-		<h2 id="genready-score-title"><?php esc_html_e( 'AI Readiness Score', 'genready' ); ?></h2>
-		<div class="genready-score__main">
-			<?php echo ScoreCard::ring( (int) $report['overall'], __( 'AI Readiness', 'genready' ), 128 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- ScoreCard::ring() escapes every attribute; the rest is fixed markup and integers. ?>
-			<p class="genready-band <?php echo esc_attr( $band['class'] ); ?>"><?php echo esc_html( $band['text'] ); ?></p>
-		</div>
-		<ul class="genready-score__items">
-			<li>
-				<a class="genready-score__item" href="#genready-section-content">
-					<?php echo ScoreCard::ring( (int) $report['content'], __( 'Content', 'genready' ), 80 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in ScoreCard::ring(). ?>
-					<span><?php esc_html_e( 'Content', 'genready' ); ?></span>
-				</a>
-			</li>
-			<li>
-				<a class="genready-score__item" href="#genready-section-crawlability">
-					<?php echo ScoreCard::ring( (int) $report['crawlability'], __( 'Crawlability', 'genready' ), 80 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in ScoreCard::ring(). ?>
-					<span><?php esc_html_e( 'Crawlability', 'genready' ); ?></span>
-				</a>
-			</li>
-			<?php if ( null !== $agents ) : ?>
+	<div class="genready-card genready-hero">
+		<section class="genready-score" aria-labelledby="genready-score-title">
+			<h2 id="genready-score-title"><?php esc_html_e( 'AI Readiness Score', 'genready' ); ?></h2>
+			<div class="genready-score__main">
+				<?php echo ScoreCard::ring( (int) $report['overall'], __( 'AI Readiness', 'genready' ), 128 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- ScoreCard::ring() escapes every attribute; the rest is fixed markup and integers. ?>
+				<p class="genready-band <?php echo esc_attr( $band['class'] ); ?>"><?php echo esc_html( $band['text'] ); ?></p>
+			</div>
+			<ul class="genready-score__items">
 				<li>
-					<a class="genready-score__item" href="#genready-section-agents">
-						<span class="genready-badge" aria-hidden="true"><?php echo esc_html( (int) $agents['detected'] . '/8' ); ?></span>
-						<span>
-							<?php
-							/* translators: %d: number of agent standards found, out of 8. */
-							$agents_text = sprintf( __( 'Agents %d/8', 'genready' ), (int) $agents['detected'] );
-							if ( (int) $agents['bonus'] > 0 ) {
-								$agents_text .= ' +' . (int) $agents['bonus'];
-							}
-							echo esc_html( $agents_text );
-							?>
-						</span>
+					<a class="genready-score__item" href="#genready-section-content">
+						<?php echo ScoreCard::ring( (int) $report['content'], __( 'Content', 'genready' ), 80 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in ScoreCard::ring(). ?>
+						<span><?php esc_html_e( 'Content', 'genready' ); ?></span>
 					</a>
 				</li>
-			<?php endif; ?>
-		</ul>
-	</section>
+				<li>
+					<a class="genready-score__item" href="#genready-section-crawlability">
+						<?php echo ScoreCard::ring( (int) $report['crawlability'], __( 'Crawlability', 'genready' ), 80 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in ScoreCard::ring(). ?>
+						<span><?php esc_html_e( 'Crawlability', 'genready' ); ?></span>
+					</a>
+				</li>
+				<?php if ( null !== $agents ) : ?>
+					<li>
+						<a class="genready-score__item" href="#genready-section-agents">
+							<span class="genready-badge" aria-hidden="true"><?php echo esc_html( (int) $agents['detected'] . '/8' ); ?></span>
+							<span>
+								<?php
+								/* translators: %d: number of agent standards found, out of 8. */
+								$agents_text = sprintf( __( 'Agents %d/8', 'genready' ), (int) $agents['detected'] );
+								if ( (int) $agents['bonus'] > 0 ) {
+									$agents_text .= ' +' . (int) $agents['bonus'];
+								}
+								echo esc_html( $agents_text );
+								?>
+							</span>
+						</a>
+					</li>
+				<?php endif; ?>
+			</ul>
+		</section>
+
+		<section class="genready-shot-panel" aria-labelledby="genready-shot-title">
+			<h2 id="genready-shot-title"><?php echo esc_html( $is_home ? __( 'Homepage screenshot', 'genready' ) : __( 'Page screenshot', 'genready' ) ); ?></h2>
+			<div class="genready-shot-frame">
+				<?php if ( null !== $screenshot ) : ?>
+					<img class="genready-shot" src="<?php echo esc_url( $screenshot ); ?>" alt="<?php echo esc_attr( $shot_alt ); ?>" loading="lazy" width="1280" height="800">
+				<?php elseif ( $shot_wait ) : ?>
+					<p class="genready-wait" data-genready-screenshot-wait data-genready-scan="<?php echo esc_attr( $open_scan ); ?>" data-genready-alt="<?php echo esc_attr( $shot_alt ); ?>"><span class="spinner is-active" aria-hidden="true"></span><?php esc_html_e( 'Making the screenshot…', 'genready' ); ?></p>
+				<?php else : ?>
+					<p><?php esc_html_e( 'This scan has no screenshot.', 'genready' ); ?></p>
+				<?php endif; ?>
+			</div>
+		</section>
+	</div>
 
 	<section class="genready-card genready-aiview" aria-labelledby="genready-aiview-title">
 		<h2 id="genready-aiview-title"><?php echo esc_html( $is_home ? __( 'How AI sees your homepage', 'genready' ) : __( 'How AI sees this page', 'genready' ) ); ?></h2>
 		<?php if ( ! $is_home ) : ?>
 			<p class="genready-aiview__url"><?php echo esc_html( (string) $report['url'] ); ?></p>
 		<?php endif; ?>
-		<div class="genready-toggle" role="group" aria-label="<?php esc_attr_e( 'Choose a view', 'genready' ); ?>">
-			<button type="button" class="button" data-genready-view="screenshot" aria-pressed="<?php echo 'screenshot' === $first ? 'true' : 'false'; ?>"><?php esc_html_e( 'Screenshot', 'genready' ); ?></button>
-			<button type="button" class="button" data-genready-view="text" aria-pressed="<?php echo 'text' === $first ? 'true' : 'false'; ?>"><?php esc_html_e( 'What AI reads', 'genready' ); ?></button>
-		</div>
 		<?php if ( null !== $gap && $gap >= 30 ) : ?>
 			<div class="notice notice-warning inline genready-gap">
 				<p>
@@ -167,16 +177,7 @@ $sections   = array(
 				</p>
 			</div>
 		<?php endif; ?>
-		<div class="genready-aiview__panel" data-genready-panel="screenshot"<?php echo 'screenshot' === $first ? '' : ' hidden'; ?>>
-			<?php if ( null !== $screenshot ) : ?>
-				<img class="genready-shot" src="<?php echo esc_url( $screenshot ); ?>" alt="<?php echo esc_attr( $shot_alt ); ?>" loading="lazy" width="1280" height="800">
-			<?php elseif ( $shot_wait ) : ?>
-				<p class="genready-wait" data-genready-screenshot-wait data-genready-scan="<?php echo esc_attr( $open_scan ); ?>" data-genready-alt="<?php echo esc_attr( $shot_alt ); ?>"><span class="spinner is-active" aria-hidden="true"></span><?php esc_html_e( 'Making the screenshot…', 'genready' ); ?></p>
-			<?php else : ?>
-				<p><?php esc_html_e( 'This scan has no screenshot.', 'genready' ); ?></p>
-			<?php endif; ?>
-		</div>
-		<div class="genready-aiview__panel" data-genready-panel="text"<?php echo 'text' === $first ? '' : ' hidden'; ?>>
+		<div class="genready-aiview__panel">
 			<?php if ( null !== $markdown ) : ?>
 				<?php if ( '' !== $formatted ) : ?>
 					<div class="genready-ai-text genready-ai-text--formatted" data-genready-text="formatted" tabindex="0"><?php echo $formatted; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markdown::to_html() filters the HTML with wp_kses. ?></div>
