@@ -4,7 +4,7 @@ Tags: llms.txt, robots.txt, schema, ai search, ai crawlers
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -135,6 +135,11 @@ Clear the Kinsta cache in MyKinsta after you apply a fix. Kinsta has no public p
 The source code is on GitHub: https://github.com/odb366/genready-wordpress-plugin
 
 == Changelog ==
+
+= 1.2.1 =
+* The score and the row of smaller scores are centred, and the Content, Crawlability and Agents labels line up.
+* The text box under "How AI sees your homepage" is shorter.
+* "Fix with one click" is a button.
 
 = 1.2.0 =
 * Each fix has an Apply button. Apply checks the change and applies it in one step. Preview shows the change first.
