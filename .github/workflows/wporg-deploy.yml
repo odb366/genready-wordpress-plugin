@@ -1,0 +1,76 @@
+# Send a released version to the wordpress.org plugin directory (SVN).
+#
+# The Release workflow calls this after it publishes a version, when the
+# repository variable WPORG_DEPLOY is "true". "Run workflow" deploys a version
+# that already has a GitHub release, for example the first version after the
+# directory approves the plugin.
+#
+# It deploys the exact zip of the GitHub release (the one Plugin Check passed)
+# to trunk and tags/<version>, and the images in .wordpress-org to assets.
+# A version that is already in tags/ is skipped completely, images included.
+#
+# Secrets: SVN_USERNAME (the wordpress.org username) and SVN_PASSWORD (the SVN
+# password from the wordpress.org profile, not the login password).
+name: Deploy to wordpress.org
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      dry-run:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy, for example 1.2.1. It must have a GitHub release.'
+        required: true
+        type: string
+      dry-run:
+        description: 'Prepare the SVN commit, but do not send it'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wporg-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # The images in .wordpress-org come from the current branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Get the release zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Not a version: $VERSION"
+            exit 1
+          fi
+          dir="$RUNNER_TEMP/release"
+          gh release download "v$VERSION" --pattern "genready-$VERSION.zip*" --dir "$dir"
+          (cd "$dir" && sha256sum --check "genready-$VERSION.zip.sha256")
+          unzip -q "$dir/genready-$VERSION.zip" -d "$RUNNER_TEMP/build"
+          grep -Eq "^ \* Version:[[:space:]]+$VERSION\$" "$RUNNER_TEMP/build/genready/genready.php"
+          grep -q "^Stable tag: $VERSION\$" "$RUNNER_TEMP/build/genready/readme.txt"
+
+      - name: Deploy
+        uses: 10up/action-wordpress-plugin-deploy@54bd289b8525fd23a5c365ec369185f2966529c2 # 2.3.0
+        with:
+          dry-run: ${{ inputs.dry-run && 'true' || 'false' }}
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: genready
+          VERSION: ${{ inputs.version }}
+          BUILD_DIR: ${{ runner.temp }}/build/genready
+          ASSETS_DIR: .wordpress-org
