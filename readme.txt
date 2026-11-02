@@ -4,7 +4,7 @@ Tags: llms.txt, robots.txt, schema, ai search, ai crawlers
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.1
+Stable tag: 1.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -134,7 +134,17 @@ Clear the Kinsta cache in MyKinsta after you apply a fix. Kinsta has no public p
 
 The source code is on GitHub: https://github.com/odb366/genready-wordpress-plugin
 
+== Screenshots ==
+
+1. The AI readiness score, the Content and Crawlability scores, the agent standards found, and a screenshot of the page.
+2. The result of each check, failures first, with the reason for each.
+3. The robots.txt fix: preview the change, then click Apply.
+4. Start without an account: enter any public page on your site and check its AI readiness.
+
 == Changelog ==
+
+= 1.2.2 =
+* The readme describes the screenshots for the WordPress.org plugin directory. The plugin code is the same as in 1.2.1.
 
 = 1.2.1 =
 * The score and the row of smaller scores are centred, and the Content, Crawlability and Agents labels line up.
