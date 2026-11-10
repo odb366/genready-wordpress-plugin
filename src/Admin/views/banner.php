@@ -24,7 +24,7 @@ $email = (string) ( $view['email'] ?? '' );
 			<input type="email" id="genready-account-email" class="regular-text" value="<?php echo esc_attr( $email ); ?>" maxlength="254" autocomplete="email" spellcheck="false" data-genready-input="email">
 			<button type="submit" class="button button-primary" data-genready-action="create-account"><?php esc_html_e( 'Create my free account', 'genready' ); ?></button>
 		</p>
-		<p class="description"><?php esc_html_e( 'Creates a GenReady account for this email and adds this site to it. GenReady emails you a link to set your password.', 'genready' ); ?></p>
+		<p class="description"><?php esc_html_e( 'Creates a GenReady account for this email and adds this site to it. The plugin adds a verification tag to your home page. Visitors do not see the tag. GenReady emails you a link to set your password.', 'genready' ); ?></p>
 		<p class="description"><?php echo Page::terms(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in Page::terms(). ?></p>
 	</form>
 	<div id="genready-account-result" class="genready-result" role="status" aria-live="polite" tabindex="-1"></div>

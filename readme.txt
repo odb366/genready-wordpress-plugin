@@ -1,6 +1,6 @@
 === GenReady – AI Search & Agent Readiness ===
 Contributors: genready
-Tags: llms.txt, robots.txt, schema, ai search, ai crawlers
+Tags: ai readiness, agent readiness, ai search, ai crawlers, structured data
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
@@ -8,15 +8,19 @@ Stable tag: 1.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-See how AI search engines and agents read your pages. Free score, no account needed. Fixes for robots.txt, llms.txt and JSON-LD.
+Free AI readiness score from an outside scan: see the text AI crawlers read, and what blocks them. No account needed.
 
 == Description ==
 
-GenReady shows how ready your site is to be found, read and cited by AI search engines (such as ChatGPT and Perplexity) and used by AI agents.
+GenReady shows how ready your site is for AI search engines, such as ChatGPT and Perplexity, and for AI agents. It checks if they can find, read and cite your pages.
+
+The scan runs on GenReady's servers and loads your page from the internet, as an AI crawler does. It can find problems that a check inside WordPress can miss, such as a firewall that blocks AI crawlers.
 
 The plugin shows your AI readiness score inside WordPress. It also shows "How AI sees this page": a screenshot and the text that AI crawlers read.
 
-Every fix has a preview, an Apply button and an Undo button. Nothing changes on your site until you click Apply.
+Every fix has a preview, an Apply button and an Undo button. A fix changes nothing on your site until you click Apply.
+
+One change happens without Apply. When you create an account or connect to GenReady, the plugin adds a verification meta tag to your home page. GenReady uses the tag to confirm that the site is yours. Visitors do not see it. You can remove the tag on the Account tab. The site then loses its verified status at the next weekly check.
 
 = Free, no account needed =
 
@@ -35,8 +39,8 @@ Every fix has a preview, an Apply button and an Undo button. Nothing changes on 
 The GenReady service generates the fixes. The plugin previews, applies, serves and undoes them.
 
 * robots.txt: rules for AI crawlers and a Content-Signal line. GenReady checks each change with two robots.txt parsers. It refuses a change that alters access for a crawler that is not an AI crawler.
-* llms.txt: a summary of your site and your best pages for AI agents, built from your WordPress pages and posts.
 * JSON-LD: structured data for one post, one page or your home page. GenReady adds only the missing properties. It never overwrites a value from your theme or SEO plugin.
+* llms.txt: a summary of your site and your best pages for AI agents, built from your WordPress pages and posts.
 
 = For agencies =
 
@@ -50,12 +54,12 @@ Yoast SEO, Rank Math and All in One SEO. The plugin detects them and avoids dupl
 
 This plugin uses the GenReady service at https://genready.ai. GenReady scans your pages and generates the fixes. The plugin needs this service to work.
 
-The plugin sends nothing until an administrator clicks a button on the GenReady page. It never sends data about your visitors. It adds no JavaScript, no cookies and no requests to GenReady to your public pages.
+The plugin sends nothing until an administrator clicks a button on the GenReady page. After that, it contacts GenReady only when an administrator opens or uses the GenReady page, or deletes the plugin. It never sends data about your visitors. It adds no JavaScript, no cookies and no requests to GenReady to your public pages.
 
 What the plugin sends, and when:
 
 * "Check AI readiness" and "Scan again" without an account: your site address, the address of the page, the plugin version and the WordPress version. GenReady then loads that public page from the internet, like a crawler, and keeps the result. The plugin keeps a random key for each result, so it can show the result to you. Without an account, the plugin can show a result for 30 days.
-* "Create my free account": the email address in the field, your site address, the keys of your earlier results, a random one-time code, the plugin version and the WordPress version. GenReady then asks your site for that code at /wp-json/genready/v1/proof/ to confirm that the site is yours. The plugin answers each code once, within 2 minutes. GenReady creates a free account for the email, adds your site, moves your earlier results into the account and emails a link to set a password. If nobody sets the password within 30 days, GenReady deletes the account.
+* "Create my free account": the email address in the field, your site address and the keys of your earlier results. The plugin also sends a random one-time code, the plugin version and the WordPress version. GenReady then asks your site for that code at /wp-json/genready/v1/proof/ to confirm that the site is yours. The plugin answers each code once, within 2 minutes. GenReady creates a free account for the email and adds your site. It moves your earlier results into the account and emails a link to set a password. If nobody sets the password within 30 days, GenReady deletes the account.
 * "Connect to GenReady", and every request after you connect: your site address, and for a scan the address of the page. The plugin version and the WordPress version go in the User-Agent header.
 * Your admin email address: only when you tick "Send my admin email to fill in the sign-in form", and only on the Connect click. GenReady uses it to fill in the sign-in form.
 * The text of your current robots.txt: when you preview the robots.txt fix.
@@ -63,9 +67,10 @@ What the plugin sends, and when:
 * The title, the author display name, the dates and the type of one post or page: when you preview the JSON-LD fix for it.
 * The path and a hash of a file you applied: when you click "Check the live file". GenReady then fetches that public file from your site.
 * The API key you paste: when you use an API key instead of Connect.
-* When you verify the site or start a scan, GenReady fetches your public pages and robots.txt from the internet, like a crawler.
+* When you verify the site or start a scan, GenReady fetches your public pages and robots.txt from the internet.
+* While your site is verified in a GenReady account, GenReady loads your home page about once every 7 days. It checks the verification tag.
 
-The plugin stores your keys and tokens encrypted in your WordPress database. When you disconnect an OAuth connection, the plugin sends a revoke request to GenReady and deletes the tokens.
+The plugin stores your keys and tokens encrypted in your WordPress database. When you disconnect an OAuth connection, the plugin sends a revoke request to GenReady and deletes the tokens. The plugin does the same when you delete it while it has an OAuth connection.
 
 Read the terms of service at https://genready.ai/terms and the privacy policy at https://genready.ai/privacy.
 
@@ -73,8 +78,8 @@ Read the terms of service at https://genready.ai/terms and the privacy policy at
 
 1. Install the plugin from Plugins, Add New, or upload the folder to `/wp-content/plugins/`.
 2. Activate it.
-3. Go to Settings, GenReady and click "Check AI readiness".
-4. To save your site and track your score, click "Create my free account".
+3. Go to Settings, GenReady and click "Check AI readiness". The site must be open to the public internet, because GenReady loads the page from outside.
+4. To save your site and track your score, click "Create my free account". The plugin then adds a verification tag to your home page.
 
 Agencies and existing users click "Already have a GenReady account? Connect".
 
@@ -92,7 +97,7 @@ GenReady creates a free account for the email, adds this site and connects the p
 
 = I already have a GenReady account. =
 
-Click "Already have a GenReady account? Connect" and sign in.
+Click "Already have a GenReady account? Connect" and sign in. The plugin then adds a verification tag to your home page.
 
 = Why could GenReady not confirm that the site is mine? =
 
@@ -104,7 +109,7 @@ No. GenReady checks every robots.txt change with two parsers. It refuses the cha
 
 = What happens if I deactivate the plugin? =
 
-Nothing is deleted. Fixes that the plugin serves stop, because the plugin is off. A robots.txt or llms.txt file that the plugin wrote to your site root stays, because it holds your own rules plus the AI rules that GenReady checked. Delete the plugin to restore your original files.
+Nothing is deleted. Fixes that the plugin serves stop, because the plugin is off. The verification tag stops too, so the site loses its verified status at the next weekly check. A robots.txt or llms.txt file that the plugin wrote to your site root stays. The file holds your own rules plus the AI rules that GenReady checked. Delete the plugin to restore your original files.
 
 = What happens if I delete the plugin? =
 
@@ -114,18 +119,6 @@ The plugin removes its options, post meta and transients. It restores your origi
 
 Fixes you applied stay, and the plugin keeps serving them. They stop updating. Undo still works without a connection.
 
-= Does it work with Yoast SEO, Rank Math and All in One SEO? =
-
-Yes. For JSON-LD, the plugin adds missing properties to the graph of your SEO plugin and does not overwrite what the plugin sets. For llms.txt, it detects an SEO plugin that already makes the file and tells you how to avoid a conflict.
-
-= Do I need a paid plan? =
-
-No. The score, "How AI sees this page" and the findings are free. The three fixes need GenReady Pro or Agency.
-
-= My security plugin blocks the REST API. =
-
-Use an API key. GenReady reads the OAuth client document from your site's REST API, so Connect fails when a security plugin blocks it. An API key does not need that document.
-
 = I use Kinsta. =
 
 Clear the Kinsta cache in MyKinsta after you apply a fix. Kinsta has no public purge API, so the plugin cannot do it for you.
@@ -133,6 +126,8 @@ Clear the Kinsta cache in MyKinsta after you apply a fix. Kinsta has no public p
 = Where is the source code? =
 
 The source code is on GitHub: https://github.com/odb366/genready-wordpress-plugin
+
+The plugin includes Parsedown 1.8.0 (MIT license) to format text.
 
 == Screenshots ==
 
@@ -144,28 +139,8 @@ The source code is on GitHub: https://github.com/odb366/genready-wordpress-plugi
 == Changelog ==
 
 = 1.2.2 =
-* The readme describes the screenshots for the WordPress.org plugin directory. The plugin code is the same as in 1.2.1.
+* The plugin says before you create an account or connect that it adds a verification tag to your home page.
+* The readme explains the verification tag and the weekly check.
+* Screenshots for the WordPress.org plugin directory.
 
-= 1.2.1 =
-* The score and the row of smaller scores are centred, and the Content, Crawlability and Agents labels line up.
-* The text box under "How AI sees your homepage" is shorter.
-* "Fix with one click" is a button.
-
-= 1.2.0 =
-* Each fix has an Apply button. Apply checks the change and applies it in one step. Preview shows the change first.
-* Undo shows only after a fix is applied.
-* In each section of the results, failed checks come first, then warnings, then passed checks.
-* The screenshot is next to the score. The text that AI reads has its own card.
-
-= 1.1.0 =
-* The fixes are on the Overview, under the results. Each fix says what it does and lists the problems from your scan that it solves.
-* "What AI reads" shows the text with its headings, lists and links. "Show the raw text" shows the exact text.
-* The screenshot shows as soon as GenReady makes it, without a reload.
-* A scan shows a spinner and the seconds since it started.
-* The button is now "Check AI readiness", and the "Page to analyze" field is wider.
-* After the daily limit, a button opens the free account form.
-* The Connection tab is now the Account tab.
-* The plugin includes Parsedown 1.8.0 (MIT license) to format the text.
-
-= 1.0.0 =
-* First release: the score of any public page without an account, a free account in one click, connection to GenReady, and the robots.txt, llms.txt and JSON-LD fixes.
+Older versions: https://github.com/odb366/genready-wordpress-plugin/releases

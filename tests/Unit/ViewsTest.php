@@ -171,7 +171,9 @@ class ViewsTest extends TestCase {
 		foreach ( array( true, false ) as $connected ) {
 			$html = Page::view( 'overview', array( 'connected' => $connected, 'state' => array( 'state' => 'pending' ) ) );
 			$this->assertStringContainsString( 'Analyzing the page…</p>', $html );
-			$this->assertStringNotContainsString( 'home page', $html );
+			// The account card names the home page for the verification tag. That text is not the scan text.
+			$scan_text = preg_replace( '#<section class="genready-card genready-account".*?</section>#s', '', $html );
+			$this->assertStringNotContainsString( 'home page', $scan_text );
 		}
 	}
 

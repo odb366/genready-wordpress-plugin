@@ -290,7 +290,7 @@ class PageTest extends TestCase {
 		$this->assertStringContainsString( '<label for="genready-account-email">Email</label>', $html );
 		$this->assertStringContainsString( 'type="email" id="genready-account-email" class="regular-text" value="admin@example.com"', $html );
 		$this->assertStringContainsString( 'Create my free account', $html );
-		$this->assertStringContainsString( 'Creates a GenReady account for this email and adds this site to it. GenReady emails you a link to set your password.', $html );
+		$this->assertStringContainsString( 'Creates a GenReady account for this email and adds this site to it. The plugin adds a verification tag to your home page. Visitors do not see the tag. GenReady emails you a link to set your password.', $html );
 		$this->assertStringContainsString( 'Check AI readiness', $html );
 		$this->assertStringNotContainsString( 'Recent scans', $html, 'only with 2 or more scans' );
 		$this->assertStringContainsString( 'How AI sees your homepage', $html );
@@ -343,6 +343,7 @@ class PageTest extends TestCase {
 		$html                                  = $this->render();
 		$this->assertStringContainsString( 'GenReady paused free scans for now. Connect with a GenReady account.', $html );
 		$this->assertStringContainsString( 'Connect to GenReady', $html );
+		$this->assertStringContainsString( 'adds a verification tag to your home page. Visitors do not see the tag.', $html, 'the admin reads about the tag before the click' );
 		$this->assertStringContainsString( 'id="genready-account"', $html, 'the fix card link still has a target' );
 		$this->assertStringNotContainsString( 'Check this page', $html );
 		$this->assertStringNotContainsString( 'genready-account-form', $html );

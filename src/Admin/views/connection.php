@@ -28,9 +28,9 @@ if ( ! $connected ) :
 		<?php if ( $paused ) : ?>
 			<div class="notice notice-warning inline"><p><?php esc_html_e( 'GenReady paused free scans for now. Connect with a GenReady account.', 'genready' ); ?></p></div>
 		<?php endif; ?>
-		<p><?php esc_html_e( 'See how AI search engines and agents read your site, and apply fixes for robots.txt, llms.txt and structured data.', 'genready' ); ?></p>
+		<p><?php esc_html_e( 'See how AI search engines and agents read your site, and apply fixes for robots.txt, structured data and llms.txt.', 'genready' ); ?></p>
 		<p class="genready-consent">
-			<?php esc_html_e( "Connecting sends this site's address to genready.ai.", 'genready' ); ?>
+			<?php esc_html_e( "Connecting sends this site's address to genready.ai and adds a verification tag to your home page. Visitors do not see the tag.", 'genready' ); ?>
 			<?php echo Page::terms(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in Page::terms(). ?>
 		</p>
 		<p>

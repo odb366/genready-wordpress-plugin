@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       GenReady – AI Search & Agent Readiness
  * Plugin URI:        https://genready.ai/wordpress
- * Description:       See how AI search engines and agents read your site, and apply GenReady's fixes for robots.txt, llms.txt and structured data.
+ * Description:       See how AI search engines and agents read your site, and apply GenReady's fixes for robots.txt, structured data and llms.txt.
  * Version:           1.2.2
  * Requires at least: 6.5
  * Requires PHP:      7.4
