@@ -138,7 +138,4 @@ The plugin includes Parsedown 1.8.0 (MIT license) to format text.
 
 = 1.2.2 =
 * The plugin says before you create an account or connect that it adds a verification tag to your home page.
-* The readme explains the verification tag and the weekly check.
 * Screenshots for the WordPress.org plugin directory.
-
-Older versions: https://github.com/odb366/genready-wordpress-plugin/releases
