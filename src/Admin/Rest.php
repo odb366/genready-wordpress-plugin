@@ -290,13 +290,16 @@ final class Rest {
 			return $this->reconnect();
 		}
 		$result = $this->setup->verify();
+		// The setup prints the tag before it asks GenReady, so a failed check can leave the tag on.
+		$tag_on = MetaTag::is_valid( get_option( MetaTag::OPTION ) );
 		if ( isset( $result['error'] ) ) {
-			return $this->failure( $result );
+			return $this->failure( $result, array( 'tag_on' => $tag_on ) );
 		}
 		$this->reports->forget_account();
 		return array(
 			'verified' => true === ( $result['verified'] ?? false ),
 			'detail'   => (string) ( $result['detail'] ?? '' ),
+			'tag_on'   => $tag_on,
 		);
 	}
 
@@ -724,10 +727,11 @@ final class Rest {
 	 * next step.
 	 *
 	 * @param array $result array( 'error' => string, 'code'? => string, 'status'? => int|null ).
+	 * @param array $extra  More error data for the script, for example array( 'tag_on' => bool ).
 	 */
-	private function failure( array $result ): \WP_Error {
+	private function failure( array $result, array $extra = array() ): \WP_Error {
 		$code = is_string( $result['code'] ?? null ) && '' !== $result['code'] ? $result['code'] : 'GENREADY_ERROR';
-		return $this->error( (string) $result['error'], $code, self::status_for( $code, $result['status'] ?? null ) );
+		return $this->error( (string) $result['error'], $code, self::status_for( $code, $result['status'] ?? null ), $extra );
 	}
 
 	/**
@@ -750,15 +754,16 @@ final class Rest {
 	 * @param string $message Plain text for the admin.
 	 * @param string $code    Machine code for the script.
 	 * @param int    $status  400, 402 or 429.
+	 * @param array  $extra   More data for the script. It cannot replace status or genready_code.
 	 */
-	private function error( string $message, string $code = 'GENREADY_ERROR', int $status = 400 ): \WP_Error {
+	private function error( string $message, string $code = 'GENREADY_ERROR', int $status = 400, array $extra = array() ): \WP_Error {
 		return new \WP_Error(
 			'genready_error',
 			$message,
 			array(
 				'status'        => in_array( $status, array( 400, 402, 429 ), true ) ? $status : 400,
 				'genready_code' => $code,
-			)
+			) + $extra
 		);
 	}
 }

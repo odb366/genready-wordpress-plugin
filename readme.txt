@@ -20,9 +20,9 @@ The plugin shows your AI readiness score inside WordPress. It also shows "How AI
 
 Every fix has a preview, an Apply button and an Undo button. A fix changes nothing on your site until you click Apply.
 
-One change happens without Apply: the plugin adds a verification meta tag to your home page. This happens when you create an account, connect, or click "Verify now". GenReady uses the tag to confirm that the site is yours. Visitors do not see it.
+One change happens without Apply: the plugin adds a verification meta tag to your home page. This happens when you create an account, connect, or click "Verify now" or "Add the verification tag". GenReady uses the tag to confirm that the site is yours. Visitors do not see it.
 
-While the plugin is connected, you can remove the tag on the Account tab. The site then loses its verified status at the next weekly check. The tag stays after you disconnect. To stop it then, deactivate or delete the plugin.
+While the plugin is connected, you can remove the tag on the Account tab and add it back. Without the tag, the site loses its verified status at the next weekly check. The tag stays after you disconnect. To stop it then, deactivate or delete the plugin.
 
 = Free, no account needed =
 
@@ -137,5 +137,5 @@ The plugin includes Parsedown 1.8.0 (MIT license) to format text.
 == Changelog ==
 
 = 1.2.2 =
-* The plugin says before you create an account or connect that it adds a verification tag to your home page.
+* The plugin explains the verification tag before you sign up or connect. The Account tab can add the tag back.
 * Screenshots for the WordPress.org plugin directory.

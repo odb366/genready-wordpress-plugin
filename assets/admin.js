@@ -33,7 +33,7 @@
 	var PLAN_CODES = [ 'PLAN_REQUIRED', 'DOMAIN_LIMIT_REACHED', 'CREDITS_EXHAUSTED' ];
 	var WRITE_CODES = [ 'CANNOT_WRITE', 'WRITE_FAILED' ];
 	var FILE_NAMES = { robots: 'robots.txt', llms: 'llms.txt' };
-	var CONNECTION_ACTIONS = [ 'connect', 'verify', 'scan', 'disconnect', 'remove-tag', 'check', 'create-account' ];
+	var CONNECTION_ACTIONS = [ 'connect', 'verify', 'scan', 'disconnect', 'remove-tag', 'add-tag', 'check', 'create-account' ];
 	var FIELD_LABELS = {
 		headline: __( 'Headline', 'genready' ),
 		name: __( 'Name', 'genready' ),
@@ -313,27 +313,41 @@
 	/**
 	 * Ask GenReady to check the verification tag.
 	 *
-	 * @param {HTMLElement} region Where the result goes.
+	 * @param {HTMLElement} region    Where the result goes.
+	 * @param {Object}      [options] tag( on ): gets the tag state after the call, also after a failure.
+	 *                                verified(): runs when GenReady confirms the site.
+	 *                                success: the text for a verified site.
 	 * @return {Promise<boolean>} True when verified.
 	 */
-	async function verify( region ) {
+	async function verify( region, options ) {
+		var opts = options || {};
+		var tell = function ( on ) {
+			if ( typeof opts.tag === 'function' && typeof on === 'boolean' ) {
+				opts.tag( on );
+			}
+		};
 		say( region, __( 'Checking the verification tag on your home page…', 'genready' ), 'info' );
 		try {
 			var result = await call( 'POST', '/verify' );
+			tell( result ? result.tag_on : undefined );
 			if ( result && result.verified === true ) {
-				say( region, __( 'Your site is verified.', 'genready' ), 'success' );
+				if ( typeof opts.verified === 'function' ) {
+					opts.verified();
+				}
+				say( region, opts.success || __( 'Your site is verified.', 'genready' ), 'success' );
 				return true;
 			}
 			var retry = makeButton( __( 'Try again', 'genready' ) );
 			retry.addEventListener( 'click', function () {
 				busy( retry, function () {
-					return verify( region );
+					return verify( region, opts );
 				}, connectionButtons );
 			} );
 			var detail = result && typeof result.detail === 'string' && result.detail ? result.detail : __( 'GenReady did not find the verification tag on your home page.', 'genready' );
 			say( region, detail, 'warning', retry );
 			return false;
 		} catch ( error ) {
+			tell( error && error.data ? error.data.tag_on : undefined );
 			showError( region, error );
 			return false;
 		}
@@ -844,8 +858,36 @@
 		}
 		var region = field( section, 'result' );
 
+		// Show the text and button for the tag state. A missing block (an old page) is skipped.
+		var showTag = function ( on ) {
+			var tagOn = field( section, 'tag-on' );
+			var tagOff = field( section, 'tag-off' );
+			if ( tagOn ) {
+				tagOn.hidden = ! on;
+			}
+			if ( tagOff ) {
+				tagOff.hidden = on;
+			}
+		};
+
+		// The table row says "Verified" and loses its Verify now button.
+		var markVerified = function () {
+			var cell = field( section, 'verified' );
+			if ( cell ) {
+				cell.textContent = __( 'Verified', 'genready' );
+			}
+		};
+
 		onAction( section, 'verify', function () {
-			return verify( region );
+			return verify( region, { tag: showTag, verified: markVerified } );
+		}, connectionButtons );
+
+		onAction( section, 'add-tag', function () {
+			return verify( region, {
+				tag: showTag,
+				verified: markVerified,
+				success: __( 'The verification tag is back on your home page, and your site is verified.', 'genready' ),
+			} );
 		}, connectionButtons );
 
 		onAction( section, 'disconnect', async function () {
@@ -862,11 +904,11 @@
 			}
 		}, connectionButtons );
 
-		onAction( section, 'remove-tag', async function ( button ) {
+		onAction( section, 'remove-tag', async function () {
 			try {
 				await call( 'POST', '/verification-tag/remove' );
-				button.hidden = true;
-				say( region, __( 'The verification tag is removed.', 'genready' ), 'success' );
+				showTag( false );
+				say( region, __( 'The verification tag is removed from your home page.', 'genready' ), 'success' );
 			} catch ( error ) {
 				showError( region, error );
 			}

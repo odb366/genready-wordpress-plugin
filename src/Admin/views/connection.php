@@ -30,7 +30,7 @@ if ( ! $connected ) :
 		<?php endif; ?>
 		<p><?php esc_html_e( 'See how AI search engines and agents read your site, and apply fixes for robots.txt, structured data and llms.txt.', 'genready' ); ?></p>
 		<p class="genready-consent">
-			<?php esc_html_e( "Connecting sends this site's address to genready.ai and adds a verification tag to your home page. Visitors do not see the tag.", 'genready' ); ?>
+			<?php esc_html_e( "Connecting sends this site's address to genready.ai. The plugin then adds a verification tag to your home page. The tag proves that you own this site. Visitors do not see it.", 'genready' ); ?>
 			<?php echo Page::terms(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in Page::terms(). ?>
 		</p>
 		<p>
@@ -81,7 +81,7 @@ $verified = $account['verified'] ?? null;
 			</tr>
 			<tr>
 				<th scope="row"><?php esc_html_e( 'Verification', 'genready' ); ?></th>
-				<td>
+				<td data-genready-field="verified">
 					<?php if ( true === $verified ) : ?>
 						<?php esc_html_e( 'Verified', 'genready' ); ?>
 					<?php else : ?>
@@ -104,12 +104,16 @@ $verified = $account['verified'] ?? null;
 	</details>
 
 	<h3><?php esc_html_e( 'Verification tag', 'genready' ); ?></h3>
-	<?php if ( $tag_on ) : ?>
-		<p><?php esc_html_e( 'Your home page shows the GenReady verification tag. It stays after you disconnect, so the site stays verified.', 'genready' ); ?></p>
+	<?php // Both states are on the page, so admin.js switches them without a reload. ?>
+	<div data-genready-field="tag-on"<?php echo $tag_on ? '' : ' hidden'; ?>>
+		<p><?php esc_html_e( 'Your home page has the GenReady verification tag. The tag proves that you own this site. It stays after you disconnect.', 'genready' ); ?></p>
+		<p><?php esc_html_e( 'GenReady checks the tag about once a week. Without the tag, the site loses its verified status.', 'genready' ); ?></p>
 		<p><button type="button" class="button" data-genready-action="remove-tag"><?php esc_html_e( 'Remove the verification tag', 'genready' ); ?></button></p>
-	<?php else : ?>
-		<p><?php esc_html_e( 'Your home page does not show the verification tag.', 'genready' ); ?></p>
-	<?php endif; ?>
+	</div>
+	<div data-genready-field="tag-off"<?php echo $tag_on ? ' hidden' : ''; ?>>
+		<p><?php esc_html_e( 'Your home page does not have the verification tag. GenReady needs the tag to keep the site verified.', 'genready' ); ?></p>
+		<p><button type="button" class="button" data-genready-action="add-tag"><?php esc_html_e( 'Add the verification tag', 'genready' ); ?></button></p>
+	</div>
 
 	<div class="genready-result" data-genready-field="result" role="status" aria-live="polite" tabindex="-1"></div>
 </section>

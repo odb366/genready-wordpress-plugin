@@ -259,6 +259,34 @@ class ViewsTest extends TestCase {
 		$this->assertDoesNotMatchRegularExpression( '/<input type="checkbox" id="genready-send-email"[^>]*checked/', $html, 'the email box is off by default' );
 	}
 
+	public function test_the_account_tab_can_remove_the_tag_and_add_it_back(): void {
+		foreach ( array( true, false ) as $tag_on ) {
+			$html = Page::view(
+				'connection',
+				array(
+					'connected' => true,
+					'account'   => array(
+						'method'    => 'oauth',
+						'plan'      => 'free',
+						'site_name' => '',
+						'hostname'  => 'example.com',
+						'verified'  => true,
+					),
+					'tag_on'    => $tag_on,
+				)
+			);
+			// Both states are on the page, so the script can switch them without a reload.
+			$this->assertStringContainsString( '<div data-genready-field="tag-on"' . ( $tag_on ? '>' : ' hidden>' ), $html );
+			$this->assertStringContainsString( '<div data-genready-field="tag-off"' . ( $tag_on ? ' hidden>' : '>' ), $html );
+			$this->assertStringContainsString( 'Your home page has the GenReady verification tag. The tag proves that you own this site. It stays after you disconnect.', $html );
+			$this->assertStringContainsString( 'GenReady checks the tag about once a week. Without the tag, the site loses its verified status.', $html, 'the admin reads the result before the click' );
+			$this->assertStringContainsString( 'data-genready-action="remove-tag">Remove the verification tag</button>', $html );
+			$this->assertStringContainsString( 'Your home page does not have the verification tag. GenReady needs the tag to keep the site verified.', $html );
+			$this->assertStringContainsString( 'data-genready-action="add-tag">Add the verification tag</button>', $html );
+			$this->assertStringNotContainsString( 'Verify now', $html, 'a verified site has no Verify now button' );
+		}
+	}
+
 	public function test_fixes_view_hides_the_file_action_when_the_site_may_not_write(): void {
 		$llms = array(
 			'kind'       => 'llms',

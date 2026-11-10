@@ -36,8 +36,10 @@ const PAGE = `<!doctype html><html><body>
 	${fixCard('llms', false, true)}
 	${fixCard('jsonld', false)}
 	<section class="genready-connection">
+		<span data-genready-field="verified">Not verified</span>
 		<button type="button" data-genready-action="verify">Verify</button>
-		<button type="button" data-genready-action="remove-tag">Remove the verification tag</button>
+		<div data-genready-field="tag-on"><button type="button" data-genready-action="remove-tag">Remove the verification tag</button></div>
+		<div data-genready-field="tag-off" hidden><button type="button" data-genready-action="add-tag">Add the verification tag</button></div>
 		<button type="button" data-genready-action="disconnect">Disconnect</button>
 		<div data-genready-field="result" role="status" tabindex="-1"></div>
 	</section>
@@ -48,13 +50,13 @@ async function open(page: Page): Promise<void> {
 	await page.setContent(PAGE);
 	await page.evaluate(() => {
 		const w = window as unknown as Record<string, unknown>;
-		const calls: Array<{ path: string; resolve: (v: unknown) => void }> = [];
+		const calls: Array<{ path: string; resolve: (v: unknown) => void; reject: (e: unknown) => void }> = [];
 		w.genreadyCalls = calls;
 		w.genreadyAdmin = { ns: 'genready/v1' };
 		w.wp = {
 			apiFetch: (options: { path: string }) =>
-				new Promise((resolve) => {
-					calls.push({ path: options.path, resolve });
+				new Promise((resolve, reject) => {
+					calls.push({ path: options.path, resolve, reject });
 				}),
 		};
 	});
@@ -72,6 +74,19 @@ async function answer(page: Page, value: unknown): Promise<string> {
 		call.resolve(v);
 		return call.path;
 	}, value);
+}
+
+/** Fail the oldest open call, as wp.apiFetch does for a REST error. */
+async function fail(page: Page, error: unknown): Promise<string> {
+	return page.evaluate((e) => {
+		const calls = (window as unknown as { genreadyCalls: Array<{ path: string; reject: (x: unknown) => void }> }).genreadyCalls;
+		const call = calls.shift();
+		if (!call) {
+			throw new Error('no open call');
+		}
+		call.reject(e);
+		return call.path;
+	}, error);
 }
 
 const card = (page: Page, kind: string) => page.locator(`.genready-fix[data-kind="${kind}"]`);
@@ -108,6 +123,65 @@ test('a state change during the call survives the end of the busy state', async 
 	await expect(card(page, 'robots').locator('[data-genready-field="result"]')).toContainText('Undone.');
 	await expect(action(page, robots, 'undo')).toBeHidden();
 	await expect(action(page, robots, 'preview')).toBeEnabled();
+});
+
+test('the Account tab removes the tag and adds it back without a reload', async ({ page }) => {
+	await open(page);
+	const conn = '.genready-connection';
+	const tagOn = page.locator(`${conn} [data-genready-field="tag-on"]`);
+	const tagOff = page.locator(`${conn} [data-genready-field="tag-off"]`);
+	const result = page.locator(`${conn} [data-genready-field="result"]`);
+
+	await action(page, conn, 'remove-tag').click();
+	expect(await answer(page, { ok: true })).toBe('/genready/v1/verification-tag/remove');
+	await expect(result).toContainText('The verification tag is removed from your home page.');
+	await expect(tagOn).toBeHidden();
+	await expect(tagOff).toBeVisible();
+
+	await action(page, conn, 'add-tag').click();
+	await expect(action(page, conn, 'disconnect')).toBeDisabled();
+	expect(await answer(page, { verified: true, detail: '', tag_on: true })).toBe('/genready/v1/verify');
+	await expect(result).toHaveText('The verification tag is back on your home page, and your site is verified.');
+	await expect(page.locator(`${conn} [data-genready-field="verified"]`)).toHaveText('Verified');
+	await expect(tagOn).toBeVisible();
+	await expect(tagOff).toBeHidden();
+});
+
+test('the tag block follows the tag, also when GenReady does not confirm the site', async ({ page }) => {
+	await open(page);
+	const conn = '.genready-connection';
+	await action(page, conn, 'remove-tag').click();
+	await answer(page, { ok: true });
+	await action(page, conn, 'add-tag').click();
+	// The plugin printed the tag before it asked GenReady.
+	await answer(page, { verified: false, detail: 'GenReady did not find the tag.', tag_on: true });
+	await expect(page.locator(`${conn} [data-genready-field="result"]`)).toContainText('GenReady did not find the tag.');
+	await expect(page.locator(`${conn} [data-genready-field="tag-on"]`)).toBeVisible();
+	await expect(page.locator(`${conn} [data-genready-field="tag-off"]`)).toBeHidden();
+	await expect(page.locator(`${conn} [data-genready-field="verified"]`)).toHaveText('Not verified');
+});
+
+test('a failed call shows the error and the true tag state', async ({ page }) => {
+	await open(page);
+	const conn = '.genready-connection';
+	const result = page.locator(`${conn} [data-genready-field="result"]`);
+	const tagOn = page.locator(`${conn} [data-genready-field="tag-on"]`);
+	const tagOff = page.locator(`${conn} [data-genready-field="tag-off"]`);
+
+	await action(page, conn, 'remove-tag').click();
+	expect(await fail(page, { message: 'GenReady could not do this. Try again.', data: { status: 400, genready_code: 'GENREADY_ERROR' } })).toBe('/genready/v1/verification-tag/remove');
+	await expect(result).toContainText('GenReady could not do this. Try again.');
+	await expect(tagOn).toBeVisible();
+	await expect(tagOff).toBeHidden();
+
+	await action(page, conn, 'remove-tag').click();
+	await answer(page, { ok: true });
+	await action(page, conn, 'add-tag').click();
+	await fail(page, { message: 'GenReady did not answer. Try again.', data: { status: 400, genready_code: 'GENREADY_ERROR', tag_on: true } });
+	await expect(result).toContainText('GenReady did not answer. Try again.');
+	await expect(tagOn).toBeVisible();
+	await expect(tagOff).toBeHidden();
+	await expect(action(page, conn, 'add-tag')).toBeEnabled();
 });
 
 test('a button that was disabled before the call stays disabled after it', async ({ page }) => {

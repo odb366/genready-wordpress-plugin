@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { VERIFY_SHOWN, account, card, connectWithKey, login, openGenReady } from '../lib/helpers';
 
 // Run after `seed-users.cjs --owner=free`, so the 127.0.0.1 domain belongs to the Free account.
-test('Free key: no report yet, and the robots.txt fix is for Pro and Agency', async ({ page }) => {
+test('Free key: no report yet, and the robots.txt fix needs a paid plan', async ({ page }) => {
 	await login(page);
 	await connectWithKey(page, account('free').apiKey);
 	const setup = page.locator('#genready-setup');
@@ -23,12 +23,12 @@ test('Free key: no report yet, and the robots.txt fix is for Pro and Agency', as
 	await openGenReady(page, 'fixes');
 	const robots = card(page, 'robots');
 	await robots.button('preview').click();
-	await expect(robots.result).toContainText('GenReady Pro and Agency generate this file.');
+	await expect(robots.result).toContainText('To apply this fix, you need a paid GenReady plan (Pro or Agency).');
 	await expect(robots.result.getByRole('link', { name: 'See plans' })).toBeVisible();
 	await expect(robots.preview).toBeHidden();
 	// Apply without a preview asks for one first, so it gives the same answer.
 	await robots.button('apply').click();
-	await expect(robots.result).toContainText('GenReady Pro and Agency generate this file.');
+	await expect(robots.result).toContainText('To apply this fix, you need a paid GenReady plan (Pro or Agency).');
 	await expect(robots.preview).toBeHidden();
 	await expect(robots.state).toHaveText('Not applied');
 	await expect(page.locator('.genready-admin')).not.toContainText(/unlock/i);

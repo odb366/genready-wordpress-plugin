@@ -132,7 +132,7 @@ class ClientTest extends TestCase {
 
 	public function test_maps_plan_required(): void {
 		$result = $this->error_for( 402, array( 'code' => 'PLAN_REQUIRED', 'message' => 'x' ) );
-		$this->assertSame( 'GenReady Pro and Agency generate this file.', $result->user_message() );
+		$this->assertSame( 'To apply this fix, you need a paid GenReady plan (Pro or Agency).', $result->user_message() );
 	}
 
 	public function test_maps_credits_exhausted(): void {

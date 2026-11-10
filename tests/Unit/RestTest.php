@@ -111,6 +111,28 @@ class RestTest extends RestTestCase {
 		$this->assertSame( 'RATE_LIMITED', $result->get_error_data()['genready_code'] );
 	}
 
+	public function test_verify_reports_the_tag_also_when_genready_does_not_find_it(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1', 'verification_token' => 'tok12345678' ) );
+		$this->client->request_result = array( 'verified' => false, 'detail' => 'Tag not found on the home page.' );
+		$result                       = $this->rest()->verify( new FakeRequest() );
+		$this->assertSame( array( 'verified' => false, 'detail' => 'Tag not found on the home page.', 'tag_on' => true ), $result, 'the plugin prints the tag before GenReady checks it' );
+	}
+
+	public function test_a_failed_verify_says_whether_the_tag_is_on(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1', 'verification_token' => 'tok12345678' ) );
+		$this->client->request_result = new ApiError( 500, 'INTERNAL', '' );
+		$result                       = $this->rest()->verify( new FakeRequest() );
+		$this->assertInstanceOf( \WP_Error::class, $result );
+		$this->assertTrue( $result->get_error_data()['tag_on'], 'the call failed after the plugin printed the tag' );
+
+		// Without a token the plugin asks GenReady for one first. That call fails before the tag is printed.
+		$this->options = array( 'blog_public' => '1' );
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$result = $this->rest()->verify( new FakeRequest() );
+		$this->assertInstanceOf( \WP_Error::class, $result );
+		$this->assertFalse( $result->get_error_data()['tag_on'] );
+	}
+
 	public function test_agent_standard_not_found_is_a_warning(): void {
 		$report = Reports::summarize( report_fixture() );
 		$this->assertSame( 'warn', $report['sections']['agents'][0]['verdict'] );
@@ -174,7 +196,7 @@ class RestTest extends RestTestCase {
 		$this->files->put( 'robots.txt', self::BASE );
 		$this->client->request_result = new ApiError( 402, 'PLAN_REQUIRED', 'Upgrade' );
 		$result                       = $this->fix( $this->rest(), 'robots', 'preview' );
-		$this->assert_error( $result, 'GenReady Pro and Agency generate this file.', 402 );
+		$this->assert_error( $result, 'To apply this fix, you need a paid GenReady plan (Pro or Agency).', 402 );
 		$this->assertSame( 'PLAN_REQUIRED', $result->get_error_data()['genready_code'] );
 		$this->assertArrayNotHasKey( 'genready_preview_robots_7', $this->transients );
 	}
