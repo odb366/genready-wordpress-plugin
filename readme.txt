@@ -20,7 +20,9 @@ The plugin shows your AI readiness score inside WordPress. It also shows "How AI
 
 Every fix has a preview, an Apply button and an Undo button. A fix changes nothing on your site until you click Apply.
 
-One change happens without Apply. When you create an account or connect to GenReady, the plugin adds a verification meta tag to your home page. GenReady uses the tag to confirm that the site is yours. Visitors do not see it. You can remove the tag on the Account tab. The site then loses its verified status at the next weekly check.
+One change happens without Apply: the plugin adds a verification meta tag to your home page. This happens when you create an account, connect, or click "Verify now". GenReady uses the tag to confirm that the site is yours. Visitors do not see it.
+
+While the plugin is connected, you can remove the tag on the Account tab. The site then loses its verified status at the next weekly check. The tag stays after you disconnect. To stop it then, deactivate or delete the plugin.
 
 = Free, no account needed =
 
@@ -63,8 +65,8 @@ What the plugin sends, and when:
 * "Connect to GenReady", and every request after you connect: your site address, and for a scan the address of the page. The plugin version and the WordPress version go in the User-Agent header.
 * Your admin email address: only when you tick "Send my admin email to fill in the sign-in form", and only on the Connect click. GenReady uses it to fill in the sign-in form.
 * The text of your current robots.txt: when you preview the robots.txt fix.
-* The text of your current llms.txt, and the titles, addresses and types of your public pages and posts: when you preview the llms.txt fix.
-* The title, the author display name, the dates and the type of one post or page: when you preview the JSON-LD fix for it.
+* The text of your current llms.txt, and your site title and tagline: when you preview the llms.txt fix. The preview also sends the titles, addresses and types of your public pages and posts.
+* The title, the author display name, the dates and the type of one post or page: when you preview the JSON-LD fix for it. For the home page, the plugin sends your site title. The preview also sends the ID of your GenReady report.
 * The path and a hash of a file you applied: when you click "Check the live file". GenReady then fetches that public file from your site.
 * The API key you paste: when you use an API key instead of Connect.
 * When you verify the site or start a scan, GenReady fetches your public pages and robots.txt from the internet.
@@ -81,7 +83,7 @@ Read the terms of service at https://genready.ai/terms and the privacy policy at
 3. Go to Settings, GenReady and click "Check AI readiness". The site must be open to the public internet, because GenReady loads the page from outside.
 4. To save your site and track your score, click "Create my free account". The plugin then adds a verification tag to your home page.
 
-Agencies and existing users click "Already have a GenReady account? Connect".
+Agencies and existing users click "Already have a GenReady account? Connect". The plugin then adds the same tag.
 
 If GenReady cannot reach your site, use "Use an API key". Create a key for one site on genready.ai and paste it.
 
@@ -93,11 +95,7 @@ No. "Check AI readiness" shows the score of any public page on your site, 3 time
 
 = What happens when I create an account in the plugin? =
 
-GenReady creates a free account for the email, adds this site and connects the plugin. The plugin then adds a GenReady verification tag to your home page. GenReady emails you a link to set your password. You need the password, or Google sign-in with the same address, to sign in on genready.ai, for example to upgrade. If nobody sets the password within 30 days, GenReady deletes the account.
-
-= I already have a GenReady account. =
-
-Click "Already have a GenReady account? Connect" and sign in. The plugin then adds a verification tag to your home page.
+GenReady creates a free account for the email, adds this site and connects the plugin. The plugin then adds a GenReady verification tag to your home page. GenReady emails you a link to set your password. You need the password, or Google sign-in with the same address, to sign in on genready.ai, for example to upgrade.
 
 = Why could GenReady not confirm that the site is mine? =
 
@@ -113,7 +111,7 @@ Nothing is deleted. Fixes that the plugin serves stop, because the plugin is off
 
 = What happens if I delete the plugin? =
 
-The plugin removes its options, post meta and transients. It restores your original robots.txt or llms.txt only when nobody edited the file after the plugin wrote it. If you edited the file, the plugin leaves it as it is. If you are connected, it also revokes the connection at GenReady.
+The plugin removes its options, post meta and transients. It restores your original robots.txt or llms.txt only when nobody edited the file after the plugin wrote it. If you edited the file, the plugin leaves it as it is. If you connected with OAuth, it also revokes the connection at GenReady.
 
 = What happens if my plan ends? =
 
