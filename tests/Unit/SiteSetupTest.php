@@ -41,6 +41,7 @@ class SiteSetupTest extends TestCase {
 		Monkey\Functions\when( '__' )->returnArg( 1 );
 		Monkey\Functions\when( 'sanitize_text_field' )->alias( function ( $v ) { return trim( strip_tags( (string) $v ) ); } );
 		Monkey\Functions\when( 'home_url' )->justReturn( 'https://example.com/' );
+		Monkey\Functions\when( 'esc_url_raw' )->returnArg( 1 );
 		Monkey\Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
 		$this->store  = new TokenStore();
 		$this->client = new FakeClient();
@@ -179,5 +180,6 @@ class SiteSetupTest extends TestCase {
 		$this->assertSame( 'https://example.com/', $this->options['genready_settings']['last_report_url'] );
 		$this->assertSame( 'https://example.com/pricing/', $this->client->requests[0][2]['url'] );
 		$this->assertSame( 'https://example.com/', $this->client->requests[1][2]['url'] );
+		$this->assertSame( array( array( '11111111-2222-3333-4444-555555555555', 'https://example.com/' ) ), array_map( null, array_column( $this->options['genready_recent_reports'], 'id' ), array_column( $this->options['genready_recent_reports'], 'url' ) ), 'one entry for the report, with the page it scanned last' );
 	}
 }

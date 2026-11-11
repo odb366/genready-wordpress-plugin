@@ -17,6 +17,7 @@ use GenReady\Connection\TokenStore;
 use GenReady\Fixes\JsonLdFix;
 use GenReady\Onboarding\AccountCreator;
 use GenReady\Onboarding\AnonymousScans;
+use GenReady\Onboarding\PageUrl;
 use GenReady\Onboarding\RestArgs;
 use GenReady\Support\Text;
 use GenReady\Verification\MetaTag;
@@ -317,6 +318,10 @@ final class Rest {
 			return $this->error( __( 'Enter an address on this site.', 'genready' ), 'NOT_THIS_SITE' );
 		}
 		if ( null !== $this->store->load() ) {
+			if ( '' !== $url && ! PageUrl::is_on_site( $url ) ) {
+				// The admin typed this address. Never scan the home page instead.
+				return $this->error( __( 'Enter an address on this site.', 'genready' ), 'NOT_THIS_SITE' );
+			}
 			$result = $this->setup->scan( $url );
 			if ( isset( $result['error'] ) ) {
 				return $this->failure( $result );
@@ -331,21 +336,14 @@ final class Rest {
 	}
 
 	/**
-	 * The state of the last scan, or of a stored scan without a connection, for the page's poll.
+	 * The state of the last scan, or of a scan from the recent list, for the page's poll.
 	 *
 	 * @param \WP_REST_Request $request Request with an optional scan ID.
 	 * @return array|\WP_Error See Reports::state().
 	 */
 	public function report( $request ) {
-		if ( null === $this->store->load() ) {
-			// The stored scan IDs are lower case (AnonymousScans::remember()).
-			$state = $this->reports->state( strtolower( (string) $request->get_param( 'scan' ) ) );
-			return $state instanceof ApiError ? $this->api_error( $state ) : $state;
-		}
-		if ( '' === $this->reports->last_report_id() ) {
-			return array( 'state' => 'none' );
-		}
-		$state = $this->reports->state();
+		// The stored IDs are lower case (AnonymousScans::remember(), RecentReports::add()).
+		$state = $this->reports->state( strtolower( (string) $request->get_param( 'scan' ) ) );
 		return $state instanceof ApiError ? $this->api_error( $state ) : $state;
 	}
 

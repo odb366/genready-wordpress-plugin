@@ -3,6 +3,7 @@ namespace GenReady\Tests\Unit;
 
 use Brain\Monkey;
 use GenReady\Api\ApiError;
+use GenReady\Admin\RecentReports;
 use GenReady\Compat\Caches;
 use GenReady\Connection\TokenStore;
 use GenReady\Onboarding\AccountCreator;
@@ -141,6 +142,17 @@ class AccountCreatorTest extends TestCase {
 		$this->client->public_result = $this->success( array( self::ID1, '99999999-9999-4999-8999-999999999999' ) );
 		$this->creator()->create( 'owner@example.com' );
 		$this->assertSame( self::ID1, $this->options['genready_settings']['last_report_id'] );
+	}
+
+	public function test_the_adopted_scans_stay_in_the_recent_list_with_their_scores(): void {
+		$this->scans->set_score( self::ID1, 64 );
+		$this->options[ RecentReports::OPTION ] = array( array( 'id' => '44444444-4444-4444-8444-444444444444', 'url' => 'https://example.com/old/', 'at' => 1, 'score' => 10 ) );
+		$this->client->public_result            = $this->success( array( self::ID1, self::ID2 ) );
+		$this->creator()->create( 'owner@example.com' );
+		$recent = ( new RecentReports() )->all();
+		$this->assertSame( array( self::ID2, self::ID1 ), array_column( $recent, 'id' ) );
+		$this->assertSame( array( 'https://example.com/pricing/', 'https://example.com/' ), array_column( $recent, 'url' ) );
+		$this->assertSame( 64, $recent[1]['score'] );
 	}
 
 	public function test_no_adopted_scan_leaves_no_last_report(): void {

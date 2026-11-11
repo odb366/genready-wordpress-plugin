@@ -127,18 +127,45 @@ final class AnonymousScans {
 	/**
 	 * The stored scans without tokens, newest first.
 	 *
-	 * @return array[] array( 'id' => string, 'url' => string, 'at' => int ) each.
+	 * @return array[] array( 'id' => string, 'url' => string, 'at' => int, 'score' => int|null ) each.
 	 */
 	public function all(): array {
 		$list = array();
 		foreach ( $this->entries() as $entry ) {
 			$list[] = array(
-				'id'  => $entry['id'],
-				'url' => $entry['url'],
-				'at'  => $entry['at'],
+				'id'    => $entry['id'],
+				'url'   => $entry['url'],
+				'at'    => $entry['at'],
+				'score' => $entry['score'],
 			);
 		}
 		return $list;
+	}
+
+	/**
+	 * Keep the score of a stored scan for the recent list. Other scans and
+	 * scores outside 0 to 100 are ignored.
+	 *
+	 * @param string $scan_id Scan ID.
+	 * @param int    $score   The AI readiness score.
+	 */
+	public function set_score( string $scan_id, int $score ): void {
+		if ( $score < 0 || $score > 100 ) {
+			return;
+		}
+		$scan_id = strtolower( $scan_id );
+		$stored  = get_option( self::OPTION );
+		$list    = is_array( $stored ) ? array_values( $stored ) : array();
+		$changed = false;
+		foreach ( $list as $index => $item ) {
+			if ( is_array( $item ) && ( $item['id'] ?? null ) === $scan_id && ( $item['score'] ?? null ) !== $score ) {
+				$list[ $index ]['score'] = $score;
+				$changed                 = true;
+			}
+		}
+		if ( $changed ) {
+			update_option( self::OPTION, $list, false );
+		}
 	}
 
 	/**
@@ -262,7 +289,7 @@ final class AnonymousScans {
 	 * expired, malformed or do not decrypt (the salts changed) are dropped,
 	 * and the option is written back without them.
 	 *
-	 * @return array[] array( 'id', 'url', 'at', 'token' ) each.
+	 * @return array[] array( 'id', 'url', 'at', 'token', 'score' ) each. The score is null until the plugin read the report.
 	 */
 	private function entries(): array {
 		$raw   = get_option( self::OPTION );
@@ -304,11 +331,13 @@ final class AnonymousScans {
 		if ( null === $token || 1 !== preg_match( self::TOKEN, $token ) ) {
 			return null;
 		}
+		$score = $item['score'] ?? null;
 		return array(
 			'id'    => $item['id'],
 			'url'   => $item['url'],
 			'at'    => $item['at'],
 			'token' => $token,
+			'score' => is_int( $score ) && $score >= 0 && $score <= 100 ? $score : null,
 		);
 	}
 

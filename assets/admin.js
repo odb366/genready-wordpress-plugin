@@ -502,6 +502,20 @@
 			return scan( setupLine( 'scan' ), button.getAttribute( 'data-genready-url' ) || '' );
 		}, connectionButtons );
 
+		// With a connection the page field scans with the key (1 API credit). Without one, onboarding.js runs the form.
+		var scanForm = document.getElementById( 'genready-scan-form' );
+		var scanResult = document.getElementById( 'genready-scan-result' );
+		if ( data.connected && scanForm && scanResult ) {
+			scanForm.addEventListener( 'submit', function ( event ) {
+				event.preventDefault();
+				var input = scanForm.querySelector( '[data-genready-input="url"]' );
+				var submit = scanForm.querySelector( '[data-genready-action="check"]' );
+				busy( submit, function () {
+					return scan( scanResult, input ? input.value.trim() : '' );
+				}, connectionButtons );
+			} );
+		}
+
 		var wait = root.querySelector( '[data-genready-screenshot-wait]' );
 		if ( wait ) {
 			waitForScreenshot( wait );

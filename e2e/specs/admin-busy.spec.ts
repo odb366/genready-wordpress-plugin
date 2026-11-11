@@ -46,21 +46,32 @@ const PAGE = `<!doctype html><html><body>
 </div>
 </body></html>`;
 
-async function open(page: Page): Promise<void> {
-	await page.setContent(PAGE);
-	await page.evaluate(() => {
+async function open(page: Page, content = PAGE, admin: Record<string, unknown> = { ns: 'genready/v1' }): Promise<void> {
+	await page.setContent(content);
+	await page.evaluate((settings) => {
 		const w = window as unknown as Record<string, unknown>;
-		const calls: Array<{ path: string; resolve: (v: unknown) => void; reject: (e: unknown) => void }> = [];
+		const calls: Array<{ path: string; method?: string; data?: unknown; resolve: (v: unknown) => void; reject: (e: unknown) => void }> = [];
 		w.genreadyCalls = calls;
-		w.genreadyAdmin = { ns: 'genready/v1' };
+		w.genreadyAdmin = settings;
 		w.wp = {
-			apiFetch: (options: { path: string }) =>
+			apiFetch: (options: { path: string; method?: string; data?: unknown }) =>
 				new Promise((resolve, reject) => {
-					calls.push({ path: options.path, resolve, reject });
+					calls.push({ path: options.path, method: options.method, data: options.data, resolve, reject });
 				}),
 		};
-	});
+	}, admin);
 	await page.addScriptTag({ path: SCRIPT });
+}
+
+/** The method and body of the oldest open call. */
+async function request(page: Page): Promise<{ path: string; method?: string; data?: unknown }> {
+	return page.evaluate(() => {
+		const call = (window as unknown as { genreadyCalls: Array<{ path: string; method?: string; data?: unknown }> }).genreadyCalls[0];
+		if (!call) {
+			throw new Error('no open call');
+		}
+		return { path: call.path, method: call.method, data: call.data };
+	});
 }
 
 /** Answer the oldest open call. */
@@ -280,4 +291,48 @@ test('Apply on JSON-LD with fields to fill in waits for the second click', async
 	await card(page, 'jsonld').locator('[data-genready-prop="name"]').fill('Example');
 	await action(page, jsonld, 'apply').click();
 	expect(await answer(page, { ok: true, card: APPLIED_CARD })).toBe('/genready/v1/fixes/jsonld/apply');
+});
+
+// The connected Overview: the page field scans any page of the site with the key.
+const SCAN_PAGE = `<!doctype html><html><body>
+<div class="genready-admin">
+	<div id="genready-setup" hidden></div>
+	<form id="genready-scan-form" novalidate>
+		<input type="url" id="genready-page-url" data-genready-input="url" value="https://example.com/">
+		<button type="submit" data-genready-action="check">Check AI readiness</button>
+	</form>
+	<div id="genready-scan-result" role="status" tabindex="-1"></div>
+	<button type="button" data-genready-action="scan">Scan again</button>
+</div>
+</body></html>`;
+
+const CONNECTED = { ns: 'genready/v1', connected: true, overviewUrl: '#overview' };
+
+test('with a connection the page field scans the address and opens the new report', async ({ page }) => {
+	await page.clock.install();
+	await open(page, SCAN_PAGE, CONNECTED);
+	await page.locator('#genready-page-url').fill('  https://example.com/pricing/ ');
+	await page.getByRole('button', { name: 'Check AI readiness' }).click();
+	await expect(page.getByRole('button', { name: 'Check AI readiness' })).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Scan again' })).toBeDisabled();
+	await expect(page.locator('#genready-scan-result')).toContainText('Analyzing the page');
+	expect(await request(page)).toEqual({ path: '/genready/v1/scan', method: 'POST', data: { url: 'https://example.com/pricing/' } });
+
+	await answer(page, { report_id: '11111111-2222-3333-4444-555555555555' });
+	await page.clock.runFor(5_000);
+	expect(await answer(page, { state: 'pending' })).toBe('/genready/v1/report');
+	await page.clock.runFor(5_000);
+	expect(await answer(page, { state: 'complete' })).toBe('/genready/v1/report');
+	await expect(page.locator('#genready-scan-result')).toContainText('The scan is done. Loading the report');
+	await expect(page).toHaveURL(/#overview$/);
+});
+
+test('with a connection the page field shows a refusal under the field', async ({ page }) => {
+	await open(page, SCAN_PAGE, CONNECTED);
+	await page.locator('#genready-page-url').fill('https://example.org/');
+	await page.getByRole('button', { name: 'Check AI readiness' }).click();
+	expect(await fail(page, { code: 'NOT_THIS_SITE', message: 'Enter an address on this site.', data: { status: 400 } })).toBe('/genready/v1/scan');
+	await expect(page.locator('#genready-scan-result')).toContainText('Enter an address on this site.');
+	await expect(page.getByRole('button', { name: 'Check AI readiness' })).toBeEnabled();
+	await expect(page.getByRole('button', { name: 'Scan again' })).toBeEnabled();
 });

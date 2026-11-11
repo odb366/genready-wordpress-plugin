@@ -22,7 +22,7 @@ Every fix has a preview, an Apply button and an Undo button. A fix changes nothi
 
 One change happens without Apply: the plugin adds a verification meta tag to your home page. This happens when you create an account, connect, or click "Verify now" or "Add the verification tag". GenReady uses the tag to confirm that the site is yours. Visitors do not see it.
 
-While the plugin is connected, you can remove the tag on the Account tab and add it back. Without the tag, the site loses its verified status at the next weekly check. The tag stays after you disconnect. To stop it then, deactivate or delete the plugin.
+While connected, the Account tab can remove the tag and add it back. Without the tag, the site loses its verified status at the next weekly check. After you disconnect, the tag stays until you deactivate or delete the plugin.
 
 = Free, no account needed =
 
@@ -34,7 +34,7 @@ While the plugin is connected, you can remove the tag on the Account tab and add
 = Free with a GenReady account =
 
 * One click in the plugin makes the account and saves your site and your results.
-* A new scan on request. Each scan uses 1 API credit from your plan.
+* Scan any page on request. Each scan uses 1 API credit.
 
 = With GenReady Pro and Agency =
 
@@ -72,7 +72,7 @@ What the plugin sends, and when:
 * When you verify the site or start a scan, GenReady fetches your public pages and robots.txt from the internet.
 * While your site is verified in a GenReady account, GenReady loads your home page about once every 7 days. It checks the verification tag.
 
-The plugin stores your keys and tokens encrypted in your WordPress database. When you disconnect an OAuth connection, the plugin sends a revoke request to GenReady and deletes the tokens. The plugin does the same when you delete it while it has an OAuth connection.
+The plugin stores your keys and tokens encrypted in your WordPress database. When you disconnect an OAuth connection, the plugin sends a revoke request to GenReady and deletes the tokens. It does the same when you delete the plugin with an OAuth connection.
 
 Read the terms of service at https://genready.ai/terms and the privacy policy at https://genready.ai/privacy.
 
@@ -107,7 +107,7 @@ No. GenReady checks every robots.txt change with two parsers. It refuses the cha
 
 = What happens if I deactivate the plugin? =
 
-Nothing is deleted. Fixes that the plugin serves stop, because the plugin is off. The verification tag stops too, so the site loses its verified status at the next weekly check. A robots.txt or llms.txt file that the plugin wrote to your site root stays. The file holds your own rules plus the AI rules that GenReady checked. Delete the plugin to restore your original files.
+Nothing is deleted. Fixes that the plugin serves stop, and so does the verification tag, so the site loses its verified status at the next weekly check. A robots.txt or llms.txt file that the plugin wrote to your site root stays. The file holds your own rules plus the AI rules that GenReady checked. Delete the plugin to restore your original files.
 
 = What happens if I delete the plugin? =
 
@@ -137,5 +137,6 @@ The plugin includes Parsedown 1.8.0 (MIT license) to format text.
 == Changelog ==
 
 = 1.2.2 =
-* The plugin explains the verification tag before you sign up or connect. The Account tab can add the tag back.
+* The plugin explains the verification tag before you sign up or connect. The Account tab can add it back.
+* After you connect, the Overview scans any page. Recent scans show each score.
 * Screenshots for the WordPress.org plugin directory.

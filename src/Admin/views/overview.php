@@ -4,8 +4,9 @@
  *
  * Included from Page::view(), so every variable here is local to that method.
  * $view: connected (bool), state (array from Reports::state(), or state 'error'), cards (fix cards
- * for the Fixes section, may be empty), and without a connection: home, suggestions, email, scans
- * (from AnonymousScans::all()).
+ * for the Fixes section, may be empty), home, suggestions, scans (from AnonymousScans::all() or
+ * Reports::recent()), with a connection open_scan (the shown report) and latest (false for an older
+ * scan, which shows no fixes), and without one email.
  *
  * @package GenReady
  */
@@ -24,34 +25,36 @@ $report = 'complete' === ( $state['state'] ?? '' ) && is_array( $state['report']
 
 $connected = ! empty( $view['connected'] );
 $scans     = is_array( $view['scans'] ?? null ) ? $view['scans'] : array();
-$open_scan = (string) ( $state['scan_id'] ?? '' );
-$cards     = is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
+$open_scan = (string) ( $view['open_scan'] ?? ( $state['scan_id'] ?? '' ) );
+$latest    = ! isset( $view['latest'] ) || ! empty( $view['latest'] );
+$cards     = $latest && is_array( $view['cards'] ?? null ) ? $view['cards'] : array();
 
 if ( ! $connected ) {
 	echo Page::view( 'banner', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
-	echo '<section class="genready-card genready-check" aria-label="' . esc_attr__( 'Check AI readiness', 'genready' ) . '">';
-	echo Page::view( 'scan-form', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
-	echo '</section>';
-	if ( count( $scans ) >= 2 ) :
-		?>
-		<section class="genready-card genready-recent" aria-labelledby="genready-recent-title">
-			<h2 id="genready-recent-title"><?php esc_html_e( 'Recent scans', 'genready' ); ?></h2>
-			<ul>
-				<?php foreach ( $scans as $scan ) : ?>
-					<li>
-						<?php if ( $scan['id'] === $open_scan ) : ?>
-							<span aria-current="true"><?php echo esc_html( PageUrl::label( (string) $scan['url'] ) ); ?></span>
-						<?php else : ?>
-							<a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready&scan=' . $scan['id'] ) ); ?>"><?php echo esc_html( PageUrl::label( (string) $scan['url'] ) ); ?></a>
-						<?php endif; ?>
-						<span class="genready-recent__date"><?php echo esc_html( wp_date( (string) get_option( 'date_format' ), (int) $scan['at'] ) ); ?></span>
-					</li>
-				<?php endforeach; ?>
-			</ul>
-		</section>
-		<?php
-	endif;
 }
+echo '<section class="genready-card genready-check" aria-label="' . esc_attr__( 'Check AI readiness', 'genready' ) . '">';
+echo Page::view( 'scan-form', $view ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
+echo '</section>';
+if ( count( $scans ) >= 2 ) {
+	$recent_html = Page::view(
+		'recent',
+		array(
+			'scans'     => $scans,
+			'open_scan' => $open_scan,
+		)
+	);
+	echo $recent_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
+}
+if ( ! $latest && null !== $report ) :
+	?>
+	<div class="notice notice-info inline genready-older">
+		<p>
+			<?php esc_html_e( 'This is an older scan. To apply fixes, open your newest scan.', 'genready' ); ?>
+			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready' ) ); ?>"><?php esc_html_e( 'Open the newest scan', 'genready' ); ?></a>
+		</p>
+	</div>
+	<?php
+endif;
 
 if ( null === $report ) :
 	?>
@@ -215,7 +218,7 @@ $sections   = array(
 								<span class="genready-check__reason"><?php echo esc_html( (string) $check['reason'] ); ?></span>
 							<?php endif; ?>
 						</span>
-						<?php if ( in_array( $check['fix'] ?? null, array( 'robots', 'llms', 'jsonld' ), true ) ) : ?>
+						<?php if ( $latest && in_array( $check['fix'] ?? null, array( 'robots', 'llms', 'jsonld' ), true ) ) : ?>
 							<a class="button genready-check__fix" href="<?php echo esc_attr( '#genready-' . $check['fix'] ); ?>"><?php esc_html_e( 'Fix with one click', 'genready' ); ?></a>
 						<?php endif; ?>
 					</li>

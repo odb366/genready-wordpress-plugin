@@ -154,6 +154,13 @@ class RestOnboardingTest extends RestTestCase {
 		$this->assertCount( 1, $this->client->publics, 'cached for 5 minutes' );
 	}
 
+	public function test_report_without_a_connection_keeps_the_score_for_the_recent_list(): void {
+		$this->scans()->remember( self::SCAN, 'https://example.com/', self::TOKEN );
+		$this->client->public_result = report_fixture( array( 'reportId' => self::SCAN ) );
+		$this->rest()->report( new FakeRequest( array( 'scan' => self::SCAN ) ) );
+		$this->assertSame( 72, $this->scans()->all()[0]['score'] );
+	}
+
 	public function test_report_uses_the_newest_scan_when_the_id_is_not_in_the_list(): void {
 		$this->scans()->remember( self::SCAN, 'https://example.com/', self::TOKEN );
 		$this->scans()->remember( self::SCAN2, 'https://example.com/a/', self::TOKEN );

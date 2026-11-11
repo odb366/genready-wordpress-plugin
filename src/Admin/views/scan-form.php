@@ -3,7 +3,8 @@
  * The "Page to analyze" field, its list and "Check AI readiness" (spec 4.1, D5).
  *
  * Included from Page::view(), so every variable here is local to that method.
- * $view: home (string), suggestions (string[]), notice (string, optional: an error for the result line).
+ * $view: home (string), suggestions (string[]), notice (string, optional: an error for the result line),
+ * connected (bool, optional: a scan then uses 1 API credit).
  *
  * @package GenReady
  */
@@ -15,6 +16,7 @@ defined( 'ABSPATH' ) || exit;
 $home        = (string) ( $view['home'] ?? '' );
 $suggestions = is_array( $view['suggestions'] ?? null ) ? $view['suggestions'] : array();
 $notice      = (string) ( $view['notice'] ?? '' );
+$connected   = ! empty( $view['connected'] );
 ?>
 <form id="genready-scan-form" class="genready-scan-form" novalidate data-genready-onboarding>
 	<label for="genready-page-url" class="genready-scan-form__label"><?php esc_html_e( 'Page to analyze', 'genready' ); ?></label>
@@ -27,6 +29,6 @@ $notice      = (string) ( $view['notice'] ?? '' );
 		</datalist>
 		<button type="submit" class="button button-primary" data-genready-action="check"><?php esc_html_e( 'Check AI readiness', 'genready' ); ?></button>
 	</div>
-	<p id="genready-page-url-help" class="description"><?php esc_html_e( 'Enter the address of any public page on this site.', 'genready' ); ?></p>
+	<p id="genready-page-url-help" class="description"><?php echo esc_html( $connected ? __( 'Enter the address of any public page on this site. Each scan uses 1 API credit.', 'genready' ) : __( 'Enter the address of any public page on this site.', 'genready' ) ); ?></p>
 </form>
 <div id="genready-scan-result" class="genready-result<?php echo '' !== $notice ? ' genready-result--error' : ''; ?>" role="status" aria-live="polite" tabindex="-1"><?php echo '' !== $notice ? '<p>' . esc_html( $notice ) . '</p>' : ''; ?></div>

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { VERIFY_SHOWN, account, card, connectWithKey, helper, jsonLdNodes, login, openGenReady } from '../lib/helpers';
+import { SITE, VERIFY_SHOWN, account, card, connectWithKey, helper, jsonLdNodes, login, openGenReady } from '../lib/helpers';
 
 /** Non-empty lines of a robots.txt body. */
 function lines(text: string): string[] {
@@ -46,6 +46,18 @@ test('connect with a Pro key: score, AI view, robots.txt apply and undo', async 
 	await expect(page.locator('.genready-hero').getByRole('heading', { name: 'Homepage screenshot' })).toBeVisible();
 	await expect(page.locator('.genready-hero .genready-shot-frame')).toBeVisible();
 	await expect(page.locator('.genready-aiview pre.genready-ai-text')).not.toBeEmpty();
+
+	// The page field scans any page of this site with the key. The plugin refuses another site without a call;
+	// the local server refuses 127.0.0.1 (SSRF guard).
+	const form = page.locator('#genready-scan-form');
+	const scanResult = page.locator('#genready-scan-result');
+	await expect(form).toContainText('Each scan uses 1 API credit.');
+	await form.locator('#genready-page-url').fill('https://example.org/');
+	await form.getByRole('button', { name: 'Check AI readiness' }).click();
+	await expect(scanResult).toContainText('Enter an address on this site.');
+	await form.locator('#genready-page-url').fill(`${SITE}/sample-page/`);
+	await form.getByRole('button', { name: 'Check AI readiness' }).click();
+	await expect(scanResult).toContainText('GenReady can check only pages that anyone can open on the internet.');
 
 	// robots.txt: preview, apply, check the served file, undo.
 	await openGenReady(page, 'fixes');
