@@ -216,3 +216,16 @@ test('the Connect link opens and closes the connect form', async ({ page }) => {
 	await expect(link).toHaveAttribute('aria-expanded', 'false');
 	await expect(page.getByRole('button', { name: 'Connect to GenReady' })).toBeHidden();
 });
+
+test('an address on another site: the refusal links to genready.ai with the address', async ({ page }) => {
+	await open(page);
+	const field = page.getByLabel('Page to analyze');
+	await field.fill('https://other.test/');
+	await field.press('Enter');
+	await settle(page, { code: 'NOT_THIS_SITE', message: 'Enter an address on this site.' });
+	const result = page.locator('#genready-scan-result');
+	await expect(result).toContainText('Enter an address on this site.');
+	const link = result.getByRole('link', { name: 'Check another site on genready.ai' });
+	await expect(link).toHaveAttribute('href', 'https://genready.ai/?url=https%3A%2F%2Fother.test%2F');
+	await expect(link).toHaveAttribute('target', '_blank');
+});

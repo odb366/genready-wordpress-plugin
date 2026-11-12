@@ -7,6 +7,8 @@
 
 namespace GenReady\Admin;
 
+use GenReady\Onboarding\PageUrl;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -44,6 +46,35 @@ final class RecentReports {
 	 */
 	public function has( string $id ): bool {
 		return in_array( strtolower( $id ), array_column( $this->all(), 'id' ), true );
+	}
+
+	/**
+	 * The newest scan of the page that a listed report scanned. It is the
+	 * report itself when no later scan of that page is in the list.
+	 *
+	 * @param string $id Report ID.
+	 * @return array|null The entry, or null when the report is not in the list.
+	 */
+	public function newest_of_page( string $id ): ?array {
+		$id   = strtolower( $id );
+		$list = $this->all();
+		$url  = null;
+		foreach ( $list as $entry ) {
+			if ( $entry['id'] === $id ) {
+				$url = $entry['url'];
+				break;
+			}
+		}
+		if ( null === $url ) {
+			return null;
+		}
+		foreach ( $list as $entry ) {
+			// The list is newest first, so the first entry of the page is its newest scan.
+			if ( $entry['id'] === $id || PageUrl::same_page( $entry['url'], $url ) ) {
+				return $entry;
+			}
+		}
+		return null;
 	}
 
 	/**

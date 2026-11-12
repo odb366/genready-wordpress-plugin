@@ -306,7 +306,7 @@ const SCAN_PAGE = `<!doctype html><html><body>
 </div>
 </body></html>`;
 
-const CONNECTED = { ns: 'genready/v1', connected: true, overviewUrl: '#overview' };
+const CONNECTED = { ns: 'genready/v1', connected: true, overviewUrl: '#overview', otherSiteUrl: 'https://genready.example/' };
 
 test('with a connection the page field scans the address and opens the new report', async ({ page }) => {
 	await page.clock.install();
@@ -327,12 +327,101 @@ test('with a connection the page field scans the address and opens the new repor
 	await expect(page).toHaveURL(/#overview$/);
 });
 
-test('with a connection the page field shows a refusal under the field', async ({ page }) => {
+test('with a connection the page field shows a refusal and a link that checks the other site on genready.ai', async ({ page }) => {
 	await open(page, SCAN_PAGE, CONNECTED);
 	await page.locator('#genready-page-url').fill('https://example.org/');
 	await page.getByRole('button', { name: 'Check AI readiness' }).click();
-	expect(await fail(page, { code: 'NOT_THIS_SITE', message: 'Enter an address on this site.', data: { status: 400 } })).toBe('/genready/v1/scan');
-	await expect(page.locator('#genready-scan-result')).toContainText('Enter an address on this site.');
+	expect(await fail(page, { code: 'NOT_THIS_SITE', message: 'Enter an address on this site.', data: { status: 400, genready_code: 'NOT_THIS_SITE' } })).toBe('/genready/v1/scan');
+	const result = page.locator('#genready-scan-result');
+	await expect(result).toContainText('Enter an address on this site.');
+	const link = result.getByRole('link', { name: 'Check another site on genready.ai' });
+	await expect(link).toHaveAttribute('href', 'https://genready.example/?url=https%3A%2F%2Fexample.org%2F');
+	await expect(link).toHaveAttribute('target', '_blank');
+	await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
 	await expect(page.getByRole('button', { name: 'Check AI readiness' })).toBeEnabled();
 	await expect(page.getByRole('button', { name: 'Scan again' })).toBeEnabled();
+
+	// Text that is not an http or https address stays out of the link.
+	await page.locator('#genready-page-url').fill('javascript:alert(1)');
+	await page.getByRole('button', { name: 'Check AI readiness' }).click();
+	await fail(page, { code: 'NOT_THIS_SITE', message: 'Enter an address on this site.', data: { status: 400, genready_code: 'NOT_THIS_SITE' } });
+	await expect(result.getByRole('link', { name: 'Check another site on genready.ai' })).toHaveAttribute('href', 'https://genready.example/');
+});
+
+/** The number of calls that wait for an answer. */
+async function openCalls(page: Page): Promise<number> {
+	return page.evaluate(() => (window as unknown as { genreadyCalls: unknown[] }).genreadyCalls.length);
+}
+
+// Kris 2026-11-12: a new connection of an account with earlier scans shows them and starts no scan.
+test('after an OAuth connection with earlier scans the page verifies and starts no scan', async ({ page }) => {
+	await open(page, SCAN_PAGE, { ...CONNECTED, justConnected: true, hasScans: true });
+	expect(await answer(page, { verified: true, detail: '', tag_on: true })).toBe('/genready/v1/verify');
+	await expect(page.locator('#genready-setup [data-genready-step="verify"]')).toContainText('Your site is verified.');
+	expect(await openCalls(page)).toBe(0);
+	await expect(page.locator('#genready-setup [data-genready-step="scan"]')).toHaveCount(0);
+});
+
+test('after an OAuth connection without earlier scans the page scans the home page', async ({ page }) => {
+	await open(page, SCAN_PAGE, { ...CONNECTED, justConnected: true, hasScans: false });
+	expect(await answer(page, { verified: true, detail: '', tag_on: true })).toBe('/genready/v1/verify');
+	await expect.poll(() => openCalls(page)).toBe(1);
+	expect(await request(page)).toMatchObject({ path: '/genready/v1/scan', method: 'POST' });
+});
+
+const KEY_PAGE = `<!doctype html><html><body>
+<div class="genready-admin">
+	<div id="genready-setup" hidden></div>
+	<section class="genready-connect">
+		<form id="genready-key-form">
+			<input type="password" data-genready-input="key" value="gr_live_abcdefghijklmnop">
+			<button type="submit">Connect with the key</button>
+		</form>
+		<div data-genready-field="result" role="status" tabindex="-1"></div>
+	</section>
+</div>
+</body></html>`;
+
+test('after an API key connection with earlier scans the page opens the Overview and starts no scan', async ({ page }) => {
+	await open(page, KEY_PAGE, { ns: 'genready/v1', overviewUrl: '#overview' });
+	await page.getByRole('button', { name: 'Connect with the key' }).click();
+	expect(await answer(page, { ok: true, has_scans: true })).toBe('/genready/v1/connect/key');
+	// Also when GenReady cannot verify the site yet: the Account tab shows that state.
+	expect(await answer(page, { verified: false, detail: 'Could not load the home page.', tag_on: true })).toBe('/genready/v1/verify');
+	await expect(page).toHaveURL(/#overview$/);
+	expect(await openCalls(page)).toBe(0);
+});
+
+test('after an API key connection without earlier scans the page scans the home page', async ({ page }) => {
+	await open(page, KEY_PAGE, { ns: 'genready/v1', overviewUrl: '#overview' });
+	await page.getByRole('button', { name: 'Connect with the key' }).click();
+	await answer(page, { ok: true, has_scans: false });
+	await answer(page, { verified: true, detail: '', tag_on: true });
+	await expect.poll(() => openCalls(page)).toBe(1);
+	expect((await request(page)).path).toBe('/genready/v1/scan');
+});
+
+test('Disconnect asks with the text of the page, which names the scans of the plan', async ({ page }) => {
+	await open(page);
+	const button = page.locator('.genready-connection [data-genready-action="disconnect"]');
+	await button.evaluate((node) => node.setAttribute('data-genready-confirm', 'Disconnect GenReady? Without a connection, the plugin cannot use the 25 scans a month of your plan.'));
+	let question = '';
+	page.once('dialog', async (dialog) => {
+		question = dialog.message();
+		await dialog.dismiss();
+	});
+	await button.click();
+	await expect.poll(() => question).toBe('Disconnect GenReady? Without a connection, the plugin cannot use the 25 scans a month of your plan.');
+	expect(await openCalls(page)).toBe(0);
+});
+
+test('the JSON-LD card sends the report on screen, the other cards do not', async ({ page }) => {
+	const id = '11111111-2222-4333-8444-555555555555';
+	await open(page, PAGE, { ns: 'genready/v1', openScan: id });
+	await action(page, '.genready-fix[data-kind="jsonld"]', 'preview').click();
+	expect(await answer(page, { summary: [], notes: [], code: '{}', fillable: [], changed: true })).toBe(`/genready/v1/fixes/jsonld/preview?scan=${id}`);
+	await action(page, '.genready-fix[data-kind="jsonld"]', 'apply').click();
+	expect(await answer(page, { ok: true, card: APPLIED_CARD })).toBe(`/genready/v1/fixes/jsonld/apply?scan=${id}`);
+	await action(page, '.genready-fix[data-kind="robots"]', 'preview').click();
+	expect(await answer(page, READY_PREVIEW)).toBe('/genready/v1/fixes/robots/preview');
 });

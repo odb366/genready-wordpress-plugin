@@ -21,6 +21,7 @@ class RecentReportsTest extends TestCase {
 		Monkey\Functions\when( 'update_option' )->alias( function ( $k, $v ) use ( &$opts ) { $opts[ $k ] = $v; return true; } );
 		Monkey\Functions\when( 'delete_option' )->alias( function ( $k ) use ( &$opts ) { unset( $opts[ $k ] ); return true; } );
 		Monkey\Functions\when( 'esc_url_raw' )->returnArg( 1 );
+		Monkey\Functions\when( 'wp_parse_url' )->alias( function ( $u, $c = -1 ) { return parse_url( $u, $c ); } );
 	}
 
 	protected function tearDown(): void {
@@ -107,6 +108,18 @@ class RecentReportsTest extends TestCase {
 		}
 		$full->append( self::ID2, 'https://example.com/b/', 5, 61 );
 		$this->assertFalse( $full->has( self::ID2 ) );
+	}
+
+	public function test_newest_of_page_is_the_latest_scan_of_the_same_page(): void {
+		$recent = new RecentReports();
+		$third  = '33333333-3333-4333-8333-333333333333';
+		$recent->add( self::ID1, 'https://example.com/' );
+		$recent->add( self::ID2, 'https://example.com/pricing/' );
+		$this->assertSame( self::ID1, $recent->newest_of_page( self::ID1 )['id'], 'a scan of another page is no later scan' );
+		$recent->add( $third, 'https://www.example.com' );
+		$this->assertSame( $third, $recent->newest_of_page( strtoupper( self::ID1 ) )['id'] );
+		$this->assertSame( self::ID2, $recent->newest_of_page( self::ID2 )['id'] );
+		$this->assertNull( $recent->newest_of_page( '44444444-4444-4444-8444-444444444444' ) );
 	}
 
 	public function test_replace_keeps_valid_entries_in_their_order(): void {

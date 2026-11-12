@@ -39,6 +39,8 @@ class Reports {
 		'llm_txt'              => 'llms',
 		'json_ld_schema'       => 'jsonld',
 	);
+	/** Setting with the GenReady site (domain ID) that made the recent scans. */
+	const OWNER = 'reports_domain';
 	/** Detail keys of the crawlability section, for details without a category. */
 	const CRAWLABILITY_KEYS = array( 'https', 'robots_txt', 'waf_detection', 'ttfb', 'xml_sitemap', 'ai_meta_directives', 'html_size', 'paywall', 'llm_txt', 'alt_text', 'internal_links' );
 
@@ -89,6 +91,7 @@ class Reports {
 	 * @return array[] array( 'id' => string, 'url' => string, 'at' => int, 'score' => int|null ) each.
 	 */
 	public function recent(): array {
+		$this->claim();
 		$list = $this->recent->all();
 		$last = $this->last_report_id();
 		if ( array() !== $list || '' === $last ) {
@@ -112,8 +115,99 @@ class Reports {
 	 * @param string $scan_id Requested report ID, or ''.
 	 */
 	public function shown_id( string $scan_id ): string {
+		$this->claim();
 		$scan_id = strtolower( $scan_id );
 		return '' !== $scan_id && $this->recent->has( $scan_id ) ? $scan_id : strtolower( $this->last_report_id() );
+	}
+
+	/**
+	 * Whether the connected Overview has a scan to show.
+	 */
+	public function has_scans(): bool {
+		return array() !== $this->recent();
+	}
+
+	/**
+	 * Keep the recent scans for the GenReady site that made them. They stay
+	 * after a disconnect, so the same account finds them again. A connection
+	 * to another GenReady site (another account) starts with no scans.
+	 */
+	public function claim(): void {
+		$connection = $this->store->load();
+		$domain     = is_array( $connection ) && is_string( $connection['domain_id'] ?? null ) ? $connection['domain_id'] : '';
+		if ( '' === $domain ) {
+			return;
+		}
+		$settings = get_option( SiteSetup::SETTINGS );
+		$settings = is_array( $settings ) ? $settings : array();
+		$owner    = $settings[ self::OWNER ] ?? '';
+		if ( $owner === $domain ) {
+			return;
+		}
+		if ( is_string( $owner ) && '' !== $owner ) {
+			$this->recent->clear();
+			unset( $settings['last_report_id'], $settings['last_report_url'] );
+			delete_transient( SiteSetup::REPORT_CACHE );
+		}
+		// No owner yet: the scans were made with this connection.
+		$settings[ self::OWNER ] = $domain;
+		update_option( SiteSetup::SETTINGS, $settings, false );
+	}
+
+	/**
+	 * The newest scan of the page that a report scanned: its ID, or the
+	 * report's own ID when it is not in the recent list.
+	 *
+	 * @param string $id Report ID.
+	 */
+	public function newest_of_page( string $id ): string {
+		$entry = $this->recent->newest_of_page( $id );
+		return null === $entry ? strtolower( $id ) : $entry['id'];
+	}
+
+	/**
+	 * Whether a report is the newest scan of its page. Only the newest scan
+	 * of a page gets fixes.
+	 *
+	 * @param string $id Report ID.
+	 */
+	public function is_newest( string $id ): bool {
+		return '' !== $id && $this->newest_of_page( $id ) === strtolower( $id );
+	}
+
+	/**
+	 * The report and the page that the fixes use: the newest scan of the
+	 * page that the Overview shows for $scan_id. The JSON-LD fix sends this
+	 * report to GenReady and adds its markup to this page.
+	 *
+	 * @param string $scan_id Requested report ID, or ''.
+	 * @return array array( 'id' => string, 'url' => string|null ). The id is '' without a connection or a scan.
+	 *               A null url means the home page.
+	 */
+	public function fix_report( string $scan_id ): array {
+		if ( null !== $this->scans && null === $this->store->load() ) {
+			// No fix runs without a connection. The JSON-LD card names the page of the shown scan.
+			$list = $this->scans->all();
+			$at   = array_search( strtolower( $scan_id ), array_column( $list, 'id' ), true );
+			$scan = false === $at ? ( $list[0] ?? null ) : $list[ $at ];
+			return array(
+				'id'  => '',
+				'url' => null === $scan ? null : $scan['url'],
+			);
+		}
+		$shown = $this->shown_id( $scan_id );
+		$entry = '' === $shown ? null : $this->recent->newest_of_page( $shown );
+		if ( null === $entry ) {
+			// No scan, or the last scan of a site from before the list.
+			return array(
+				'id'  => $shown,
+				'url' => $this->cached_url(),
+			);
+		}
+		return array(
+			'id'  => $entry['id'],
+			'url' => $entry['url'],
+		);
 	}
 
 	/**
@@ -273,11 +367,10 @@ class Reports {
 	}
 
 	/**
-	 * Forget the last scan and the recent scans.
+	 * Forget the cached report. The recent scans stay (see claim()).
 	 */
-	public function forget(): void {
-		$this->recent->clear();
-		$this->forget_last();
+	public function forget_cache(): void {
+		delete_transient( SiteSetup::REPORT_CACHE );
 	}
 
 	/**
@@ -296,7 +389,9 @@ class Reports {
 	 * Plan and site facts for the Connection tab. GenReady has no API that
 	 * returns the account email, so the tab does not show it.
 	 *
-	 * @return array|null array( 'method', 'plan', 'site_name', 'hostname', 'verified' ), or null when not connected.
+	 * @return array|null array( 'method', 'plan', 'credits', 'site_name', 'hostname', 'verified' ), or null when
+	 *                    not connected. credits is array( 'limit' => int|null, 'remaining' => int|null ) or null;
+	 *                    a null limit means no monthly limit.
 	 */
 	public function account(): ?array {
 		$connection = $this->store->load();
@@ -310,6 +405,7 @@ class Reports {
 		$account = array(
 			'method'    => 'oauth' === ( $connection['method'] ?? '' ) ? 'oauth' : 'api_key',
 			'plan'      => null,
+			'credits'   => null,
 			'site_name' => null,
 			'hostname'  => null,
 			'verified'  => null,
@@ -317,6 +413,9 @@ class Reports {
 		$usage   = $this->client->request( 'GET', '/api/v1/usage' );
 		if ( is_array( $usage ) && is_string( $usage['plan'] ?? null ) ) {
 			$account['plan'] = sanitize_text_field( $usage['plan'] );
+		}
+		if ( is_array( $usage ) ) {
+			$account['credits'] = self::credits( $usage['apiCredits'] ?? null );
 		}
 		$domains = $this->client->request( 'GET', '/api/v1/domains' );
 		$list    = is_array( $domains ) && is_array( $domains['domains'] ?? null ) ? $domains['domains'] : array();
@@ -331,6 +430,33 @@ class Reports {
 			set_transient( self::ACCOUNT_CACHE, $account, self::TTL );
 		}
 		return $account;
+	}
+
+	/**
+	 * The monthly API credits of the plan. A scan uses 1 credit.
+	 *
+	 * @param mixed $credits The usage answer's apiCredits.
+	 * @return array|null array( 'limit' => int|null, 'remaining' => int|null ), or null when GenReady did not say.
+	 */
+	private static function credits( $credits ): ?array {
+		if ( ! is_array( $credits ) || ! array_key_exists( 'limit', $credits ) ) {
+			return null;
+		}
+		$limit = $credits['limit'];
+		if ( null === $limit ) {
+			return array(
+				'limit'     => null,
+				'remaining' => null,
+			);
+		}
+		if ( ! is_numeric( $limit ) || (int) $limit < 0 ) {
+			return null;
+		}
+		$remaining = $credits['remaining'] ?? null;
+		return array(
+			'limit'     => (int) $limit,
+			'remaining' => is_numeric( $remaining ) ? max( 0, min( (int) $limit, (int) $remaining ) ) : null,
+		);
 	}
 
 	/**

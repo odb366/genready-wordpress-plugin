@@ -4,6 +4,7 @@ namespace GenReady\Tests\Unit;
 use Brain\Monkey;
 use GenReady\Api\ApiError;
 use GenReady\Admin\RecentReports;
+use GenReady\Admin\Reports;
 use GenReady\Compat\Caches;
 use GenReady\Connection\TokenStore;
 use GenReady\Onboarding\AccountCreator;
@@ -161,6 +162,7 @@ class AccountCreatorTest extends TestCase {
 		$this->creator()->create( 'owner@example.com' );
 		$this->assertArrayNotHasKey( 'last_report_id', $this->options['genready_settings'] );
 		$this->assertArrayNotHasKey( 'last_report_url', $this->options['genready_settings'] );
+		$this->assertSame( self::DOMAIN, $this->options['genready_settings'][ Reports::OWNER ], 'the recent scans belong to the new account' );
 	}
 
 	public function test_the_proof_is_gone_after_an_error_and_after_an_exception(): void {

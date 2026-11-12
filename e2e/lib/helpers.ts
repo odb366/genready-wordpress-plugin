@@ -55,7 +55,11 @@ export async function openConnectForm(page: Page): Promise<void> {
 	await expect(page.getByRole('button', { name: 'Connect to GenReady' })).toBeVisible();
 }
 
-/** Connect with an API key from the Overview tab and wait for the verify and scan steps to finish. */
+/**
+ * Connect with an API key from the Overview tab. Then the page verifies the site. With an earlier scan
+ * (the blueprints store one) it opens the Overview; without one it scans the home page. Wait for either
+ * end, so the next page.goto() does not meet the page's own navigation.
+ */
 export async function connectWithKey(page: Page, key: string, site = ''): Promise<void> {
 	await openGenReady(page, 'overview', site);
 	await openConnectForm(page);
@@ -63,6 +67,12 @@ export async function connectWithKey(page: Page, key: string, site = ''): Promis
 	await page.locator('#genready-key').fill(key);
 	await page.getByRole('button', { name: 'Connect with the key' }).click();
 	await expect(page.locator('.genready-connect [data-genready-field="result"]')).toContainText('GenReady is connected.');
+	await expect(async () => {
+		const opened = /options-general\.php\?page=genready$/.test(page.url());
+		const scanned = opened ? 0 : await page.locator('#genready-setup [data-genready-step="scan"]:not(.genready-result--info)').count();
+		expect(opened || scanned > 0).toBe(true);
+	}).toPass({ timeout: 60_000 });
+	await page.waitForLoadState();
 }
 
 /**

@@ -5,8 +5,8 @@
  * Included from Page::view(), so every variable here is local to that method.
  * $view: connected (bool), state (array from Reports::state(), or state 'error'), cards (fix cards
  * for the Fixes section, may be empty), home, suggestions, scans (from AnonymousScans::all() or
- * Reports::recent()), with a connection open_scan (the shown report) and latest (false for an older
- * scan, which shows no fixes), and without one email.
+ * Reports::recent()), with a connection open_scan (the shown report), latest (false for a page
+ * scanned again later, which shows no fixes) and newest (the newest scan of that page), and without one email.
  *
  * @package GenReady
  */
@@ -46,11 +46,12 @@ if ( count( $scans ) >= 2 ) {
 	echo $recent_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the view escapes every value.
 }
 if ( ! $latest && null !== $report ) :
+	$newest = (string) ( $view['newest'] ?? '' );
 	?>
 	<div class="notice notice-info inline genready-older">
 		<p>
-			<?php esc_html_e( 'This is an older scan. To apply fixes, open your newest scan.', 'genready' ); ?>
-			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready' ) ); ?>"><?php esc_html_e( 'Open the newest scan', 'genready' ); ?></a>
+			<?php esc_html_e( 'You scanned this page again later. To apply fixes, open the newest scan.', 'genready' ); ?>
+			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready' . ( '' !== $newest ? '&scan=' . $newest : '' ) ) ); ?>"><?php esc_html_e( 'Open the newest scan', 'genready' ); ?></a>
 		</p>
 	</div>
 	<?php

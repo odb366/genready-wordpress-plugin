@@ -21,7 +21,10 @@ test('an address on another site: refused in WordPress with no call', async ({ p
 	await tools.resetHttpLog();
 	await page.getByLabel('Page to analyze').fill('https://example.org/');
 	await page.getByRole('button', { name: 'Check AI readiness' }).click();
-	await expect(page.locator('#genready-scan-result')).toHaveText('Enter an address on this site.');
+	const result = page.locator('#genready-scan-result');
+	await expect(result.locator('p').first()).toHaveText('Enter an address on this site.');
+	// The next step for another site (Kris 2026-11-12): genready.ai with the address filled in.
+	await expect(result.getByRole('link', { name: 'Check another site on genready.ai' })).toHaveAttribute('href', `${API_BASE}/?url=https%3A%2F%2Fexample.org%2F`);
 	expect((await tools.httpLog()).filter((entry) => entry.url.startsWith(API_BASE))).toEqual([]);
 });
 

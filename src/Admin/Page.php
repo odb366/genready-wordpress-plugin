@@ -30,6 +30,8 @@ final class Page {
 	const TABS = array( 'overview', 'connection' );
 	/** Views that view() may render. */
 	const VIEWS = array( 'overview', 'fixes', 'connection', 'start', 'scan-form', 'recent', 'banner' );
+	/** Scans a month of the free GenReady plan: its API credits (apiCallsPerMonth in the server's shared/plans.ts). */
+	const FREE_SCANS = 25;
 
 	/**
 	 * Token storage.
@@ -163,7 +165,13 @@ final class Page {
 			'justConnected' => $connected && is_array( $notice ) && ! empty( $notice['ok'] ) && empty( $notice['account'] ),
 			'reportState'   => (string) ( $state['state'] ?? '' ),
 			'scanId'        => $connected ? '' : (string) ( $state['scan_id'] ?? '' ),
+			// The fix cards send the shown report, so the JSON-LD fix works on its page. Without a
+			// connection that is the shown anonymous scan, not $this->shown (the account's kept last report).
+			'openScan'      => $connected ? (string) $this->shown : (string) ( $state['scan_id'] ?? '' ),
+			// After a connection, earlier scans of this account stay and no new scan starts.
+			'hasScans'      => $connected && $this->reports->has_scans(),
 			'overviewUrl'   => admin_url( 'options-general.php?page=' . self::SLUG ),
+			'otherSiteUrl'  => esc_url_raw( GENREADY_API_BASE . '/' ),
 		);
 		wp_add_inline_script( 'genready-admin', 'window.genreadyAdmin = ' . wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP ) . ';', 'before' );
 		if ( ! $connected ) {
@@ -295,8 +303,9 @@ final class Page {
 				'suggestions' => PageUrl::suggestions(),
 				'scans'       => $this->reports->recent(),
 				'open_scan'   => $open,
-				// The fixes go with the last scan: the JSON-LD fix uses its report and its page.
-				'latest'      => strtolower( $this->reports->last_report_id() ) === $open,
+				// The fixes go with the newest scan of each page: the JSON-LD fix uses its report and its page.
+				'latest'      => '' === $open || $this->reports->is_newest( $open ),
+				'newest'      => '' === $open ? '' : $this->reports->newest_of_page( $open ),
 			);
 		}
 		if ( 'start' === $name || 'overview' === $name ) {
@@ -328,7 +337,7 @@ final class Page {
 	 */
 	private function fix_cards(): array {
 		if ( null === $this->fix_cards ) {
-			$this->fix_cards = $this->cards->all( $this->cards->jsonld_target( $this->reports->cached_url() ) );
+			$this->fix_cards = $this->cards->all( $this->cards->jsonld_target( $this->reports->fix_report( $this->requested_scan() )['url'] ) );
 		}
 		return $this->fix_cards;
 	}

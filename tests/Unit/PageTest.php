@@ -212,6 +212,22 @@ class PageTest extends TestCase {
 		$this->assertSame( '', ob_get_clean() );
 	}
 
+	// Review 2026-11-12 MEDIUM: without a connection the fix cards also send the shown scan, so a JSON-LD
+	// Undo acts on the page on screen. A disconnect keeps the last report of the account.
+	public function test_without_a_connection_the_cards_send_the_shown_scan(): void {
+		$this->options['genready_settings'] = array( 'last_report_id' => self::SCAN3 );
+		$this->scans()->remember( self::SCAN1, 'https://example.com/about/', self::TOKEN );
+		$this->scans()->remember( self::SCAN2, 'https://example.com/', self::TOKEN );
+		$this->client->public_result = report_fixture( array( 'reportId' => self::SCAN1 ) );
+		$this->stub_views();
+		$_GET = array( 'scan' => self::SCAN1 );
+		$this->page()->enqueue( 'settings_page_genready' );
+		$this->assertStringContainsString( '"openScan":"' . self::SCAN1 . '"', $this->inline['genready-admin'] );
+		$reports = new Reports( $this->store, $this->client, $this->scans() );
+		$this->assertSame( 'https://example.com/about/', $reports->fix_report( self::SCAN1 )['url'] );
+		$this->assertSame( 'https://example.com/', $reports->fix_report( '' )['url'], 'no scan means the newest' );
+	}
+
 	public function test_callback_notice_is_read_once_and_starts_the_setup(): void {
 		$this->store->save( array( 'method' => 'oauth', 'access_token' => 'a', 'refresh_token' => 'r', 'domain_id' => 'd1' ) );
 		$this->transients['genready_notice_7'] = array( 'ok' => true );
@@ -274,6 +290,7 @@ class PageTest extends TestCase {
 
 	const SCAN1 = '11111111-1111-4111-8111-111111111111';
 	const SCAN2 = '22222222-2222-4222-8222-222222222222';
+	const SCAN3 = '33333333-3333-4333-8333-333333333333';
 	const TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ';
 
 	public function test_the_first_screen_without_a_connection_or_a_scan_makes_no_call(): void {
@@ -377,25 +394,35 @@ class PageTest extends TestCase {
 		$this->assertStringContainsString( '<span aria-current="true">Home page</span>', $html );
 	}
 
-	public function test_an_older_scan_shows_no_fixes_and_links_to_the_newest_scan(): void {
+	// Kris 2026-11-12: a scan of another page is not an older scan. Each page keeps its fixes.
+	public function test_a_scan_of_another_page_keeps_its_fixes(): void {
 		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
 		$this->options['genready_settings'] = array( 'last_report_id' => self::SCAN2 );
 		$recent                             = new RecentReports();
 		$recent->add( self::SCAN1, 'https://example.com/' );
 		$recent->add( self::SCAN2, 'https://example.com/pricing/' );
 		$this->card_list              = array( array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied' ) );
-		$this->client->request_result = report_fixture( array( 'reportId' => self::SCAN2 ) );
-		$newest                       = $this->render();
-		$this->assertStringContainsString( 'genready-fixes', $newest );
-		$this->assertStringContainsString( 'Fix with one click', $newest );
-		$this->assertStringNotContainsString( 'This is an older scan.', $newest );
+		$this->client->request_result = report_fixture( array( 'reportId' => self::SCAN1 ) );
+		$html                         = $this->render( array( 'scan' => self::SCAN1 ), true );
+		$this->assertStringContainsString( 'id="genready-fixes"', $html );
+		$this->assertStringContainsString( 'Fix with one click', $html );
+		$this->assertStringNotContainsString( 'genready-older', $html );
+	}
 
+	public function test_an_older_scan_of_the_same_page_shows_no_fixes_and_links_to_its_newest_scan(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$this->options['genready_settings'] = array( 'last_report_id' => self::SCAN3 );
+		$recent                             = new RecentReports();
+		$recent->add( self::SCAN1, 'https://example.com/' );
+		$recent->add( self::SCAN2, 'https://example.com/pricing/' );
+		$recent->add( self::SCAN3, 'https://www.example.com' );
+		$this->card_list              = array( array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied' ) );
 		$this->client->request_result = report_fixture( array( 'reportId' => self::SCAN1 ) );
 		$older                        = $this->render( array( 'scan' => self::SCAN1 ), true );
 		$this->assertStringNotContainsString( 'id="genready-fixes"', $older );
 		$this->assertStringNotContainsString( 'Fix with one click', $older );
-		$this->assertStringContainsString( 'This is an older scan. To apply fixes, open your newest scan.', $older );
-		$this->assertStringContainsString( '<a href="https://example.com/wp-admin/options-general.php?page=genready">Open the newest scan</a>', $older );
+		$this->assertStringContainsString( 'You scanned this page again later. To apply fixes, open the newest scan.', $older );
+		$this->assertStringContainsString( '<a href="https://example.com/wp-admin/options-general.php?page=genready&amp;scan=' . self::SCAN3 . '">Open the newest scan</a>', $older );
 	}
 
 	// WordPress loads the scripts first, so the report is read before render().

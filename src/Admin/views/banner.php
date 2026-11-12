@@ -18,6 +18,12 @@ $email = (string) ( $view['email'] ?? '' );
 ?>
 <section class="genready-card genready-account" id="genready-account" aria-labelledby="genready-account-title">
 	<h2 id="genready-account-title"><?php esc_html_e( 'Save your site and track your score', 'genready' ); ?></h2>
+	<p>
+		<?php
+		/* translators: %d: number of scans a month on the free plan. */
+		echo esc_html( sprintf( __( 'A free account includes %d scans a month for any page on this site.', 'genready' ), Page::FREE_SCANS ) );
+		?>
+	</p>
 	<form id="genready-account-form" class="genready-account-form" novalidate data-genready-onboarding>
 		<p>
 			<label for="genready-account-email"><?php esc_html_e( 'Email', 'genready' ); ?></label><br>

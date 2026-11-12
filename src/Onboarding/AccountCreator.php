@@ -8,6 +8,7 @@
 namespace GenReady\Onboarding;
 
 use GenReady\Admin\RecentReports;
+use GenReady\Admin\Reports;
 use GenReady\Api\ApiError;
 use GenReady\Api\Client;
 use GenReady\Compat\Caches;
@@ -155,7 +156,7 @@ final class AccountCreator {
 		// The weekly re-check reads the tag (spec 8.4), so it must reach the cached home page too.
 		$this->meta->enable( $token );
 		$this->caches->purge_url( home_url( '/' ) );
-		$this->set_last_report( $adopted[0] ?? null );
+		$this->set_last_report( $adopted[0] ?? null, $domain );
 		// The adopted scans are reports of the account now, so the recent list keeps them.
 		( new RecentReports() )->replace( $adopted );
 		$this->scans->clear();
@@ -194,12 +195,15 @@ final class AccountCreator {
 
 	/**
 	 * Point the Overview and the JSON-LD fix at the adopted report, or at nothing.
+	 * The recent scans belong to the new GenReady site from now on.
 	 *
-	 * @param array|null $scan The adopted scan from AnonymousScans::all(), or null.
+	 * @param array|null $scan   The adopted scan from AnonymousScans::all(), or null.
+	 * @param string     $domain The domain ID of the new account's site.
 	 */
-	private function set_last_report( ?array $scan ): void {
-		$settings = get_option( SiteSetup::SETTINGS );
-		$settings = is_array( $settings ) ? $settings : array();
+	private function set_last_report( ?array $scan, string $domain ): void {
+		$settings                   = get_option( SiteSetup::SETTINGS );
+		$settings                   = is_array( $settings ) ? $settings : array();
+		$settings[ Reports::OWNER ] = $domain;
 		if ( null === $scan ) {
 			unset( $settings['last_report_id'], $settings['last_report_url'] );
 		} else {

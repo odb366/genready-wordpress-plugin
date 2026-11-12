@@ -34,7 +34,7 @@ While connected, the Account tab can remove the tag and add it back. Without the
 = Free with a GenReady account =
 
 * One click in the plugin makes the account and saves your site and your results.
-* Scan any page on request. Each scan uses 1 API credit.
+* 25 scans a month of any page, 1 API credit each.
 
 = With GenReady Pro and Agency =
 

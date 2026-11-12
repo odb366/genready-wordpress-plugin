@@ -287,6 +287,39 @@ class ViewsTest extends TestCase {
 		}
 	}
 
+	// Kris 2026-11-12: say how many scans a connection gives, and remind of them at Disconnect.
+	public function test_the_account_tab_shows_the_scans_of_the_plan_and_names_them_at_disconnect(): void {
+		$account = array(
+			'method'    => 'oauth',
+			'plan'      => 'free',
+			'credits'   => array( 'limit' => 25, 'remaining' => 22 ),
+			'site_name' => '',
+			'hostname'  => 'example.com',
+			'verified'  => true,
+		);
+		$html    = Page::view( 'connection', array( 'connected' => true, 'account' => $account, 'tag_on' => true ) );
+		$this->assertStringContainsString( '<th scope="row">Scans this month</th>', $html );
+		$this->assertStringContainsString( '<td data-genready-field="credits">22 of 25 left</td>', $html );
+		$this->assertStringContainsString( 'data-genready-confirm="Disconnect GenReady? Without a connection, the plugin cannot use the 25 scans a month of your plan. Applied fixes stay. Your recent scans come back when you connect this account again."', $html );
+		$this->assertStringContainsString( '<p class="description">Without a connection, the plugin cannot use the 25 scans a month of your plan.', $html );
+
+		$account['credits'] = array( 'limit' => null, 'remaining' => null );
+		$html               = Page::view( 'connection', array( 'connected' => true, 'account' => $account, 'tag_on' => true ) );
+		$this->assertStringContainsString( '<td data-genready-field="credits">No monthly limit</td>', $html );
+		$this->assertStringContainsString( 'the plugin cannot use the scans of your GenReady plan.', $html );
+
+		$account['credits'] = null;
+		$html               = Page::view( 'connection', array( 'connected' => true, 'account' => $account, 'tag_on' => true ) );
+		$this->assertStringNotContainsString( 'Scans this month', $html, 'no row when GenReady did not say' );
+	}
+
+	public function test_the_connect_texts_name_the_scans_of_a_free_account(): void {
+		$html = Page::view( 'connection', array( 'connected' => false, 'account' => null, 'tag_on' => false ) );
+		$this->assertStringContainsString( 'A free GenReady account includes 25 scans a month for any page on this site.', $html );
+		$html = Page::view( 'banner', array( 'email' => '' ) );
+		$this->assertStringContainsString( 'A free account includes 25 scans a month for any page on this site.', $html );
+	}
+
 	public function test_fixes_view_hides_the_file_action_when_the_site_may_not_write(): void {
 		$llms = array(
 			'kind'       => 'llms',
