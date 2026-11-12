@@ -50,7 +50,7 @@ if ( ! $latest && null !== $report ) :
 	?>
 	<div class="notice notice-info inline genready-older">
 		<p>
-			<?php esc_html_e( 'You scanned this page again later. To apply fixes, open the newest scan.', 'genready' ); ?>
+			<?php esc_html_e( 'This is an older scan of this page. Fixes are only available on the newest scan.', 'genready' ); ?>
 			<a href="<?php echo esc_url( admin_url( 'options-general.php?page=genready' . ( '' !== $newest ? '&scan=' . $newest : '' ) ) ); ?>"><?php esc_html_e( 'Open the newest scan', 'genready' ); ?></a>
 		</p>
 	</div>

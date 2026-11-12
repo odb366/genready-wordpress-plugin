@@ -421,7 +421,7 @@ class PageTest extends TestCase {
 		$older                        = $this->render( array( 'scan' => self::SCAN1 ), true );
 		$this->assertStringNotContainsString( 'id="genready-fixes"', $older );
 		$this->assertStringNotContainsString( 'Fix with one click', $older );
-		$this->assertStringContainsString( 'You scanned this page again later. To apply fixes, open the newest scan.', $older );
+		$this->assertStringContainsString( 'This is an older scan of this page. Fixes are only available on the newest scan.', $older );
 		$this->assertStringContainsString( '<a href="https://example.com/wp-admin/options-general.php?page=genready&amp;scan=' . self::SCAN3 . '">Open the newest scan</a>', $older );
 	}
 
