@@ -223,7 +223,9 @@ class UninstallTest extends TestCase {
 	public function test_uninstall_deletes_the_onboarding_options(): void {
 		$this->options['genready_anonymous_scans'] = array( array( 'id' => 'x' ) );
 		$this->options['genready_proof']           = array( 'id' => 'y' );
+		$this->options['genready_recent_reports']  = array( array( 'id' => 'z' ) );
 		$this->uninstaller()->run();
+		$this->assertArrayNotHasKey( 'genready_recent_reports', $this->options );
 		$this->assertArrayNotHasKey( 'genready_anonymous_scans', $this->options );
 		$this->assertArrayNotHasKey( 'genready_proof', $this->options );
 	}

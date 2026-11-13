@@ -20,10 +20,17 @@ test('two stored scans: the page heading, the recent list, the home page, and th
 	const recent = page.locator('.genready-recent');
 	await expect(recent.getByRole('heading', { name: 'Recent scans' })).toBeVisible();
 	await expect(recent.locator('[aria-current="true"]')).toHaveText('/sample-page/');
+	// The open scan shows its score; the other one has none until the plugin reads it.
+	const row = (name: string) => recent.locator('tbody tr', { hasText: name });
+	await expect(recent.locator('tbody tr')).toHaveCount(2);
+	await expect(row('/sample-page/').locator('.genready-pill')).toHaveText(/^\d{1,3}$/);
+	await expect(row('Home page').locator('.genready-recent__none')).toHaveText('No score yet');
 
 	await recent.getByRole('link', { name: 'Home page' }).click();
 	await expect(page.getByRole('heading', { name: 'How AI sees your homepage' })).toBeVisible();
 	await expect(recent.locator('[aria-current="true"]')).toHaveText('Home page');
+	await expect(row('Home page').locator('.genready-pill')).toHaveText(/^\d{1,3}$/);
+	await expect(row('/sample-page/').locator('.genready-pill')).toHaveText(/^\d{1,3}$/);
 
 	await openGenReady(page, 'fixes');
 	const robots = card(page, 'robots');

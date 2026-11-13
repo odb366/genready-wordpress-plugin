@@ -74,7 +74,7 @@ final class ApiError {
 				return __( 'Reconnect GenReady.', 'genready' );
 			case 402:
 				if ( 'PLAN_REQUIRED' === $this->code ) {
-					return __( 'GenReady Pro and Agency generate this file.', 'genready' );
+					return __( 'To apply this fix, you need a paid GenReady plan (Pro or Agency).', 'genready' );
 				}
 				if ( 'DOMAIN_LIMIT_REACHED' === $this->code ) {
 					return __( 'Your plan has no free site slot. Remove a site in GenReady or upgrade.', 'genready' );

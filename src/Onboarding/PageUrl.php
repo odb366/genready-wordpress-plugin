@@ -98,6 +98,18 @@ final class PageUrl {
 	}
 
 	/**
+	 * Tell whether two addresses name the same page. The scheme, a leading
+	 * www., a trailing slash and the fragment do not count.
+	 *
+	 * @param string $first  Page address.
+	 * @param string $second Page address.
+	 */
+	public static function same_page( string $first, string $second ): bool {
+		$page = self::bare( $first );
+		return '' !== $page && self::bare( $second ) === $page;
+	}
+
+	/**
 	 * A host in lower case without a leading www., as the server's normalizeHostname().
 	 *
 	 * @param string $host Host name.

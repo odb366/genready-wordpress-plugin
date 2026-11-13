@@ -226,6 +226,26 @@ class AnonymousScansTest extends TestCase {
 		$this->assertSame( array(), $this->client->publics );
 	}
 
+	public function test_a_score_is_kept_for_a_listed_scan_only(): void {
+		$scans = $this->scans();
+		$scans->remember( self::ID1, 'https://example.com/', self::TOKEN1 );
+		$this->assertNull( $scans->all()[0]['score'] );
+		$scans->set_score( self::ID1, 64 );
+		$scans->set_score( self::ID2, 50 );
+		$scans->set_score( self::ID1, -1 );
+		$this->assertSame( 64, $scans->all()[0]['score'] );
+		$this->assertSame( array( self::ID1 ), array_column( $scans->all(), 'id' ) );
+	}
+
+	public function test_an_entry_from_before_the_scores_still_loads(): void {
+		$scans = $this->scans();
+		$scans->remember( self::ID1, 'https://example.com/', self::TOKEN1 );
+		unset( $this->options[ AnonymousScans::OPTION ][0]['score'] );
+		$this->options[ AnonymousScans::OPTION ][] = array( 'id' => self::ID2, 'url' => 'https://example.com/a/', 'at' => time(), 'token' => $this->options[ AnonymousScans::OPTION ][0]['token'], 'score' => 'high' );
+		$this->assertSame( array( self::ID1, self::ID2 ), array_column( $scans->all(), 'id' ) );
+		$this->assertSame( array( null, null ), array_column( $scans->all(), 'score' ) );
+	}
+
 	public function test_clear_empties_the_option(): void {
 		$scans = $this->scans();
 		$scans->remember( self::ID1, 'https://example.com/', self::TOKEN1 );

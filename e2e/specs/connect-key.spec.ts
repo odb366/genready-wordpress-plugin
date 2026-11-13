@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { VERIFY_SHOWN, account, card, connectWithKey, helper, jsonLdNodes, login, openGenReady } from '../lib/helpers';
+import { SITE, account, card, connectWithKey, helper, jsonLdNodes, login, openGenReady } from '../lib/helpers';
 
 /** Non-empty lines of a robots.txt body. */
 function lines(text: string): string[] {
@@ -23,15 +23,14 @@ test('connect with a Pro key: score, AI view, robots.txt apply and undo', async 
 	const base = await (await page.request.get('/robots.txt')).text();
 	expect(base).not.toContain('Content-Signal');
 
+	const tools = await helper(page);
+	await tools.resetHttpLog();
 	await connectWithKey(page, account('pro').apiKey);
 
-	// Verify: the seeded domain is verified ("already verified"); without it the local server cannot reach
-	// 127.0.0.1 and answers not verified with a detail. The scan of 127.0.0.1 always fails (SSRF guard):
-	// the server answers 400 INVALID_URL, and the plugin shows the err.public text for it.
-	const setup = page.locator('#genready-setup');
-	await expect(setup.locator('[data-genready-step="verify"]')).toHaveText(VERIFY_SHOWN);
-	console.log(`verify step: ${await setup.locator('[data-genready-step="verify"]').innerText()}`);
-	await expect(setup.locator('[data-genready-step="scan"].genready-result--error')).toContainText('GenReady can check only pages that anyone can open on the internet.');
+	// The blueprint stored a scan of this site, so the connection keeps it, starts no new scan and opens
+	// the Overview (Kris 2026-11-12). The page field below still checks a scan with the key.
+	await page.waitForURL(/options-general\.php\?page=genready$/);
+	expect((await tools.httpLog()).filter((entry) => entry.url.includes('/api/v1/analyze'))).toEqual([]);
 
 	// Overview from the seeded report.
 	await openGenReady(page);
@@ -46,6 +45,21 @@ test('connect with a Pro key: score, AI view, robots.txt apply and undo', async 
 	await expect(page.locator('.genready-hero').getByRole('heading', { name: 'Homepage screenshot' })).toBeVisible();
 	await expect(page.locator('.genready-hero .genready-shot-frame')).toBeVisible();
 	await expect(page.locator('.genready-aiview pre.genready-ai-text')).not.toBeEmpty();
+
+	// The page field scans any page of this site with the key. The plugin refuses another site without a call;
+	// the local server refuses 127.0.0.1 (SSRF guard).
+	const form = page.locator('#genready-scan-form');
+	const scanResult = page.locator('#genready-scan-result');
+	await expect(form).toContainText('Each scan uses 1 API credit.');
+	await form.locator('#genready-page-url').fill('https://example.org/');
+	await form.getByRole('button', { name: 'Check AI readiness' }).click();
+	await expect(scanResult).toContainText('Enter an address on this site.');
+	const other = scanResult.getByRole('link', { name: 'Check another site on genready.ai' });
+	await expect(other).toHaveAttribute('href', /\/\?url=https%3A%2F%2Fexample\.org%2F$/);
+	await expect(other).toHaveAttribute('target', '_blank');
+	await form.locator('#genready-page-url').fill(`${SITE}/sample-page/`);
+	await form.getByRole('button', { name: 'Check AI readiness' }).click();
+	await expect(scanResult).toContainText('GenReady can check only pages that anyone can open on the internet.');
 
 	// robots.txt: preview, apply, check the served file, undo.
 	await openGenReady(page, 'fixes');
@@ -112,4 +126,23 @@ test('connect with a Pro key: score, AI view, robots.txt apply and undo', async 
 	// The refresh lock works on the Playground SQLite database.
 	const probe = await (await helper(page)).post('/lock-probe');
 	expect(probe).toEqual({ first: true, second: false, row_after_release: 0, third: true });
+
+	// The Account tab names the scans of the plan, and Disconnect reminds of them (Kris 2026-11-12).
+	await openGenReady(page, 'connection');
+	await expect(page.locator('[data-genready-field="credits"]')).toHaveText(/^(\d+ of \d+ left|\d+ a month|No monthly limit)$/);
+	let question = '';
+	page.once('dialog', async (dialog) => {
+		question = dialog.message();
+		await dialog.accept();
+	});
+	await page.getByRole('button', { name: 'Disconnect' }).click();
+	await expect(page.locator('.genready-connect')).toBeVisible();
+	expect(question).toMatch(/^Disconnect GenReady\? Without a connection, the plugin cannot use the (\d+ scans a month of your plan|scans of your GenReady plan)\. Applied fixes stay\. Your recent scans come back when you connect this account again\.$/);
+
+	// The same account again: the scans are back, and no scan starts.
+	await tools.resetHttpLog();
+	await connectWithKey(page, account('pro').apiKey);
+	await page.waitForURL(/options-general\.php\?page=genready$/);
+	await expect(page.locator('.genready-score')).toBeVisible();
+	expect((await tools.httpLog()).filter((entry) => entry.url.includes('/api/v1/analyze'))).toEqual([]);
 });

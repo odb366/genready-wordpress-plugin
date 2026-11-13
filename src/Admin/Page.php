@@ -29,7 +29,9 @@ final class Page {
 	/** The tabs, in order. The Account tab keeps the slug "connection". */
 	const TABS = array( 'overview', 'connection' );
 	/** Views that view() may render. */
-	const VIEWS = array( 'overview', 'fixes', 'connection', 'start', 'scan-form', 'banner' );
+	const VIEWS = array( 'overview', 'fixes', 'connection', 'start', 'scan-form', 'recent', 'banner' );
+	/** Scans a month of the free GenReady plan: its API credits (apiCallsPerMonth in the server's shared/plans.ts). */
+	const FREE_SCANS = 25;
 
 	/**
 	 * Token storage.
@@ -67,6 +69,12 @@ final class Page {
 	 * @var array|null
 	 */
 	private $state = null;
+	/**
+	 * The report ID that state() showed with a connection, found before the read. Null until loaded.
+	 *
+	 * @var string|null
+	 */
+	private $shown = null;
 	/**
 	 * The fix cards of the Overview, built on the load hook. Null until built.
 	 *
@@ -143,8 +151,8 @@ final class Page {
 		if ( self::HOOK !== $hook ) {
 			return;
 		}
-		wp_enqueue_style( 'genready-admin', plugins_url( 'assets/admin.css', GENREADY_FILE ), array(), GENREADY_VERSION );
-		wp_enqueue_script( 'genready-admin', plugins_url( 'assets/admin.js', GENREADY_FILE ), array( 'wp-api-fetch', 'wp-i18n' ), GENREADY_VERSION, true );
+		wp_enqueue_style( 'genready-admin', plugins_url( 'assets/admin.css', GENREADY_FILE ), array(), self::asset_version( 'assets/admin.css' ) );
+		wp_enqueue_script( 'genready-admin', plugins_url( 'assets/admin.js', GENREADY_FILE ), array( 'wp-api-fetch', 'wp-i18n' ), self::asset_version( 'assets/admin.js' ), true );
 		wp_set_script_translations( 'genready-admin', 'genready' );
 		$notice    = $this->notice();
 		$connected = null !== $this->store->load();
@@ -157,13 +165,32 @@ final class Page {
 			'justConnected' => $connected && is_array( $notice ) && ! empty( $notice['ok'] ) && empty( $notice['account'] ),
 			'reportState'   => (string) ( $state['state'] ?? '' ),
 			'scanId'        => $connected ? '' : (string) ( $state['scan_id'] ?? '' ),
+			// The fix cards send the shown report, so the JSON-LD fix works on its page. Without a
+			// connection that is the shown anonymous scan, not $this->shown (the account's kept last report).
+			'openScan'      => $connected ? (string) $this->shown : (string) ( $state['scan_id'] ?? '' ),
+			// After a connection, earlier scans of this account stay and no new scan starts.
+			'hasScans'      => $connected && $this->reports->has_scans(),
 			'overviewUrl'   => admin_url( 'options-general.php?page=' . self::SLUG ),
+			'otherSiteUrl'  => esc_url_raw( GENREADY_API_BASE . '/' ),
 		);
 		wp_add_inline_script( 'genready-admin', 'window.genreadyAdmin = ' . wp_json_encode( $data, JSON_HEX_TAG | JSON_HEX_AMP ) . ';', 'before' );
 		if ( ! $connected ) {
-			wp_enqueue_script( 'genready-onboarding', plugins_url( 'assets/onboarding.js', GENREADY_FILE ), array( 'genready-admin', 'wp-api-fetch', 'wp-i18n' ), GENREADY_VERSION, true );
+			wp_enqueue_script( 'genready-onboarding', plugins_url( 'assets/onboarding.js', GENREADY_FILE ), array( 'genready-admin', 'wp-api-fetch', 'wp-i18n' ), self::asset_version( 'assets/onboarding.js' ), true );
 			wp_set_script_translations( 'genready-onboarding', 'genready' );
 		}
+	}
+
+	/**
+	 * The version of a script or style: the plugin version and the time the
+	 * file changed. A new build with the same plugin version then loads its
+	 * own file, not the browser's copy of the old one.
+	 *
+	 * @param string $file Path from the plugin folder.
+	 */
+	private static function asset_version( string $file ): string {
+		$path = dirname( GENREADY_FILE ) . '/' . $file;
+		$time = is_readable( $path ) ? filemtime( $path ) : false;
+		return false === $time ? GENREADY_VERSION : GENREADY_VERSION . '.' . $time;
 	}
 
 	/**
@@ -266,20 +293,30 @@ final class Page {
 	private function view_data( string $tab, bool $connected ): array {
 		$name = $this->view_name( $tab, $connected );
 		if ( 'overview' === $name && $connected ) {
+			$state = $this->state(); // Before the list: reading the report keeps its score in the list.
+			$open  = (string) $this->shown;
 			return array(
-				'connected' => true,
-				'state'     => $this->state(),
-				'cards'     => $this->fix_cards(),
+				'connected'   => true,
+				'state'       => $state,
+				'cards'       => $this->fix_cards(),
+				'home'        => home_url( '/' ),
+				'suggestions' => PageUrl::suggestions(),
+				'scans'       => $this->reports->recent(),
+				'open_scan'   => $open,
+				// The fixes go with the newest scan of each page: the JSON-LD fix uses its report and its page.
+				'latest'      => '' === $open || $this->reports->is_newest( $open ),
+				'newest'      => '' === $open ? '' : $this->reports->newest_of_page( $open ),
 			);
 		}
 		if ( 'start' === $name || 'overview' === $name ) {
+			$state = 'overview' === $name ? $this->state() : array( 'state' => 'none' ); // Before the list: reading the scan keeps its score.
 			return array(
 				'connected'   => false,
 				'home'        => home_url( '/' ),
 				'suggestions' => PageUrl::suggestions(),
 				'email'       => $this->user_email(),
 				'scans'       => $this->scans->all(),
-				'state'       => 'overview' === $name ? $this->state() : array( 'state' => 'none' ),
+				'state'       => $state,
 				'cards'       => 'overview' === $name ? $this->fix_cards() : array(),
 				// The scripts loaded the only scan, GenReady said it is gone, and the list is empty now (spec 11).
 				'notice'      => 'start' === $name && 'gone' === ( $this->state['state'] ?? '' ) ? (string) ( $this->state['message'] ?? '' ) : '',
@@ -300,7 +337,7 @@ final class Page {
 	 */
 	private function fix_cards(): array {
 		if ( null === $this->fix_cards ) {
-			$this->fix_cards = $this->cards->all( $this->cards->jsonld_target( $this->reports->cached_url() ) );
+			$this->fix_cards = $this->cards->all( $this->cards->jsonld_target( $this->reports->fix_report( $this->requested_scan() )['url'] ) );
 		}
 		return $this->fix_cards;
 	}
@@ -310,6 +347,8 @@ final class Page {
 	 */
 	private function state(): array {
 		if ( null === $this->state ) {
+			// The shown report before the read: a report that turns out to be gone then marks no row.
+			$this->shown = $this->reports->shown_id( $this->requested_scan() );
 			$state       = $this->reports->state( $this->requested_scan() );
 			$this->state = $state instanceof ApiError
 				? array(

@@ -7,6 +7,8 @@
 
 namespace GenReady\Onboarding;
 
+use GenReady\Admin\RecentReports;
+use GenReady\Admin\Reports;
 use GenReady\Api\ApiError;
 use GenReady\Api\Client;
 use GenReady\Compat\Caches;
@@ -142,7 +144,7 @@ final class AccountCreator {
 			|| 1 !== preg_match( AnonymousScans::UUID, $domain ) || ! MetaTag::is_valid( $token ) ) {
 			return self::refusal( __( 'GenReady could not do this. Try again.', 'genready' ), 'BAD_RESPONSE', null );
 		}
-		$newest = $this->newest_adopted( $data['adoptedScanIds'] ?? null );
+		$adopted = $this->adopted( $data['adoptedScanIds'] ?? null );
 		$this->store->save(
 			array(
 				'method'             => 'api_key',
@@ -154,7 +156,9 @@ final class AccountCreator {
 		// The weekly re-check reads the tag (spec 8.4), so it must reach the cached home page too.
 		$this->meta->enable( $token );
 		$this->caches->purge_url( home_url( '/' ) );
-		$this->set_last_report( $newest );
+		$this->set_last_report( $adopted[0] ?? null, $domain );
+		// The adopted scans are reports of the account now, so the recent list keeps them.
+		( new RecentReports() )->replace( $adopted );
 		$this->scans->clear();
 		delete_transient( SiteSetup::REPORT_CACHE );
 		set_transient(
@@ -173,29 +177,33 @@ final class AccountCreator {
 	}
 
 	/**
-	 * The newest stored scan that GenReady adopted, or null.
+	 * The stored scans that GenReady adopted, newest first.
 	 *
 	 * @param mixed $adopted adoptedScanIds from the answer.
-	 * @return array|null array( 'id' => string, 'url' => string, 'at' => int ), or null.
+	 * @return array[] array( 'id' => string, 'url' => string, 'at' => int, 'score' => int|null ) each.
 	 */
-	private function newest_adopted( $adopted ): ?array {
-		$ids = array_map( 'strtolower', array_filter( is_array( $adopted ) ? $adopted : array(), 'is_string' ) );
+	private function adopted( $adopted ): array {
+		$ids  = array_map( 'strtolower', array_filter( is_array( $adopted ) ? $adopted : array(), 'is_string' ) );
+		$list = array();
 		foreach ( $this->scans->all() as $scan ) {
 			if ( in_array( strtolower( $scan['id'] ), $ids, true ) ) {
-				return $scan;
+				$list[] = $scan;
 			}
 		}
-		return null;
+		return $list;
 	}
 
 	/**
 	 * Point the Overview and the JSON-LD fix at the adopted report, or at nothing.
+	 * The recent scans belong to the new GenReady site from now on.
 	 *
-	 * @param array|null $scan The adopted scan from AnonymousScans::all(), or null.
+	 * @param array|null $scan   The adopted scan from AnonymousScans::all(), or null.
+	 * @param string     $domain The domain ID of the new account's site.
 	 */
-	private function set_last_report( ?array $scan ): void {
-		$settings = get_option( SiteSetup::SETTINGS );
-		$settings = is_array( $settings ) ? $settings : array();
+	private function set_last_report( ?array $scan, string $domain ): void {
+		$settings                   = get_option( SiteSetup::SETTINGS );
+		$settings                   = is_array( $settings ) ? $settings : array();
+		$settings[ Reports::OWNER ] = $domain;
 		if ( null === $scan ) {
 			unset( $settings['last_report_id'], $settings['last_report_url'] );
 		} else {

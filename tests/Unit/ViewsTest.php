@@ -171,7 +171,9 @@ class ViewsTest extends TestCase {
 		foreach ( array( true, false ) as $connected ) {
 			$html = Page::view( 'overview', array( 'connected' => $connected, 'state' => array( 'state' => 'pending' ) ) );
 			$this->assertStringContainsString( 'Analyzing the page…</p>', $html );
-			$this->assertStringNotContainsString( 'home page', $html );
+			// The account card names the home page for the verification tag. That text is not the scan text.
+			$scan_text = preg_replace( '#<section class="genready-card genready-account".*?</section>#s', '', $html );
+			$this->assertStringNotContainsString( 'home page', $scan_text );
 		}
 	}
 
@@ -255,6 +257,67 @@ class ViewsTest extends TestCase {
 		$this->assertStringContainsString( 'https://genready.ai/privacy', $html );
 		$this->assertMatchesRegularExpression( '/<input type="checkbox" id="genready-send-email"[^>]*>/', $html );
 		$this->assertDoesNotMatchRegularExpression( '/<input type="checkbox" id="genready-send-email"[^>]*checked/', $html, 'the email box is off by default' );
+	}
+
+	public function test_the_account_tab_can_remove_the_tag_and_add_it_back(): void {
+		foreach ( array( true, false ) as $tag_on ) {
+			$html = Page::view(
+				'connection',
+				array(
+					'connected' => true,
+					'account'   => array(
+						'method'    => 'oauth',
+						'plan'      => 'free',
+						'site_name' => '',
+						'hostname'  => 'example.com',
+						'verified'  => true,
+					),
+					'tag_on'    => $tag_on,
+				)
+			);
+			// Both states are on the page, so the script can switch them without a reload.
+			$this->assertStringContainsString( '<div data-genready-field="tag-on"' . ( $tag_on ? '>' : ' hidden>' ), $html );
+			$this->assertStringContainsString( '<div data-genready-field="tag-off"' . ( $tag_on ? ' hidden>' : '>' ), $html );
+			$this->assertStringContainsString( 'Your home page has the GenReady verification tag. The tag proves that you own this site. It stays after you disconnect.', $html );
+			$this->assertStringContainsString( 'GenReady checks the tag about once a week. Without the tag, the site loses its verified status.', $html, 'the admin reads the result before the click' );
+			$this->assertStringContainsString( 'data-genready-action="remove-tag">Remove the verification tag</button>', $html );
+			$this->assertStringContainsString( 'Your home page does not have the verification tag. GenReady needs the tag to keep the site verified.', $html );
+			$this->assertStringContainsString( 'data-genready-action="add-tag">Add the verification tag</button>', $html );
+			$this->assertStringNotContainsString( 'Verify now', $html, 'a verified site has no Verify now button' );
+		}
+	}
+
+	// Kris 2026-11-12: say how many scans a connection gives, and remind of them at Disconnect.
+	public function test_the_account_tab_shows_the_scans_of_the_plan_and_names_them_at_disconnect(): void {
+		$account = array(
+			'method'    => 'oauth',
+			'plan'      => 'free',
+			'credits'   => array( 'limit' => 25, 'remaining' => 22 ),
+			'site_name' => '',
+			'hostname'  => 'example.com',
+			'verified'  => true,
+		);
+		$html    = Page::view( 'connection', array( 'connected' => true, 'account' => $account, 'tag_on' => true ) );
+		$this->assertStringContainsString( '<th scope="row">Scans this month</th>', $html );
+		$this->assertStringContainsString( '<td data-genready-field="credits">22 of 25 left</td>', $html );
+		$this->assertStringContainsString( 'data-genready-confirm="Disconnect GenReady? Without a connection, the plugin cannot use the 25 scans a month of your plan. Applied fixes stay. Your recent scans come back when you connect this account again."', $html );
+		$this->assertStringContainsString( '<p class="description">Without a connection, the plugin cannot use the 25 scans a month of your plan.', $html );
+
+		$account['credits'] = array( 'limit' => null, 'remaining' => null );
+		$html               = Page::view( 'connection', array( 'connected' => true, 'account' => $account, 'tag_on' => true ) );
+		$this->assertStringContainsString( '<td data-genready-field="credits">No monthly limit</td>', $html );
+		$this->assertStringContainsString( 'the plugin cannot use the scans of your GenReady plan.', $html );
+
+		$account['credits'] = null;
+		$html               = Page::view( 'connection', array( 'connected' => true, 'account' => $account, 'tag_on' => true ) );
+		$this->assertStringNotContainsString( 'Scans this month', $html, 'no row when GenReady did not say' );
+	}
+
+	public function test_the_connect_texts_name_the_scans_of_a_free_account(): void {
+		$html = Page::view( 'connection', array( 'connected' => false, 'account' => null, 'tag_on' => false ) );
+		$this->assertStringContainsString( 'A free GenReady account includes 25 scans a month for any page on this site.', $html );
+		$html = Page::view( 'banner', array( 'email' => '' ) );
+		$this->assertStringContainsString( 'A free account includes 25 scans a month for any page on this site.', $html );
 	}
 
 	public function test_fixes_view_hides_the_file_action_when_the_site_may_not_write(): void {

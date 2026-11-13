@@ -39,6 +39,8 @@ class Reports {
 		'llm_txt'              => 'llms',
 		'json_ld_schema'       => 'jsonld',
 	);
+	/** Setting with the GenReady site (domain ID) that made the recent scans. */
+	const OWNER = 'reports_domain';
 	/** Detail keys of the crawlability section, for details without a category. */
 	const CRAWLABILITY_KEYS = array( 'https', 'robots_txt', 'waf_detection', 'ttfb', 'xml_sitemap', 'ai_meta_directives', 'html_size', 'paywall', 'llm_txt', 'alt_text', 'internal_links' );
 
@@ -60,6 +62,12 @@ class Reports {
 	 * @var AnonymousScans|null
 	 */
 	private $scans;
+	/**
+	 * Scans made with a connection.
+	 *
+	 * @var RecentReports
+	 */
+	private $recent;
 
 	/**
 	 * Build the reader.
@@ -67,11 +75,139 @@ class Reports {
 	 * @param TokenStore          $store  Token storage.
 	 * @param Client              $client API client.
 	 * @param AnonymousScans|null $scans  Scans made without an account.
+	 * @param RecentReports|null  $recent Scans made with a connection. Null means the stored list.
 	 */
-	public function __construct( TokenStore $store, Client $client, ?AnonymousScans $scans = null ) {
+	public function __construct( TokenStore $store, Client $client, ?AnonymousScans $scans = null, ?RecentReports $recent = null ) {
 		$this->store  = $store;
 		$this->client = $client;
 		$this->scans  = $scans;
+		$this->recent = $recent ?? new RecentReports();
+	}
+
+	/**
+	 * The recent scans made with a connection, newest first. A site that
+	 * scanned before the list existed gets its last scan.
+	 *
+	 * @return array[] array( 'id' => string, 'url' => string, 'at' => int, 'score' => int|null ) each.
+	 */
+	public function recent(): array {
+		$this->claim();
+		$list = $this->recent->all();
+		$last = $this->last_report_id();
+		if ( array() !== $list || '' === $last ) {
+			return $list;
+		}
+		$url = $this->cached_url();
+		return array(
+			array(
+				'id'    => strtolower( $last ),
+				'url'   => null !== $url ? $url : home_url( '/' ),
+				'at'    => 0,
+				'score' => null,
+			),
+		);
+	}
+
+	/**
+	 * The report that the connected Overview shows: $scan_id when it is in
+	 * the recent list, else the last scan, or ''.
+	 *
+	 * @param string $scan_id Requested report ID, or ''.
+	 */
+	public function shown_id( string $scan_id ): string {
+		$this->claim();
+		$scan_id = strtolower( $scan_id );
+		return '' !== $scan_id && $this->recent->has( $scan_id ) ? $scan_id : strtolower( $this->last_report_id() );
+	}
+
+	/**
+	 * Whether the connected Overview has a scan to show.
+	 */
+	public function has_scans(): bool {
+		return array() !== $this->recent();
+	}
+
+	/**
+	 * Keep the recent scans for the GenReady site that made them. They stay
+	 * after a disconnect, so the same account finds them again. A connection
+	 * to another GenReady site (another account) starts with no scans.
+	 */
+	public function claim(): void {
+		$connection = $this->store->load();
+		$domain     = is_array( $connection ) && is_string( $connection['domain_id'] ?? null ) ? $connection['domain_id'] : '';
+		if ( '' === $domain ) {
+			return;
+		}
+		$settings = get_option( SiteSetup::SETTINGS );
+		$settings = is_array( $settings ) ? $settings : array();
+		$owner    = $settings[ self::OWNER ] ?? '';
+		if ( $owner === $domain ) {
+			return;
+		}
+		if ( is_string( $owner ) && '' !== $owner ) {
+			$this->recent->clear();
+			unset( $settings['last_report_id'], $settings['last_report_url'] );
+			delete_transient( SiteSetup::REPORT_CACHE );
+		}
+		// No owner yet: the scans were made with this connection.
+		$settings[ self::OWNER ] = $domain;
+		update_option( SiteSetup::SETTINGS, $settings, false );
+	}
+
+	/**
+	 * The newest scan of the page that a report scanned: its ID, or the
+	 * report's own ID when it is not in the recent list.
+	 *
+	 * @param string $id Report ID.
+	 */
+	public function newest_of_page( string $id ): string {
+		$entry = $this->recent->newest_of_page( $id );
+		return null === $entry ? strtolower( $id ) : $entry['id'];
+	}
+
+	/**
+	 * Whether a report is the newest scan of its page. Only the newest scan
+	 * of a page gets fixes.
+	 *
+	 * @param string $id Report ID.
+	 */
+	public function is_newest( string $id ): bool {
+		return '' !== $id && $this->newest_of_page( $id ) === strtolower( $id );
+	}
+
+	/**
+	 * The report and the page that the fixes use: the newest scan of the
+	 * page that the Overview shows for $scan_id. The JSON-LD fix sends this
+	 * report to GenReady and adds its markup to this page.
+	 *
+	 * @param string $scan_id Requested report ID, or ''.
+	 * @return array array( 'id' => string, 'url' => string|null ). The id is '' without a connection or a scan.
+	 *               A null url means the home page.
+	 */
+	public function fix_report( string $scan_id ): array {
+		if ( null !== $this->scans && null === $this->store->load() ) {
+			// No fix runs without a connection. The JSON-LD card names the page of the shown scan.
+			$list = $this->scans->all();
+			$at   = array_search( strtolower( $scan_id ), array_column( $list, 'id' ), true );
+			$scan = false === $at ? ( $list[0] ?? null ) : $list[ $at ];
+			return array(
+				'id'  => '',
+				'url' => null === $scan ? null : $scan['url'],
+			);
+		}
+		$shown = $this->shown_id( $scan_id );
+		$entry = '' === $shown ? null : $this->recent->newest_of_page( $shown );
+		if ( null === $entry ) {
+			// No scan, or the last scan of a site from before the list.
+			return array(
+				'id'  => $shown,
+				'url' => $this->cached_url(),
+			);
+		}
+		return array(
+			'id'  => $entry['id'],
+			'url' => $entry['url'],
+		);
 	}
 
 	/**
@@ -86,12 +222,14 @@ class Reports {
 	/**
 	 * The URL of the cached report, else the page of the last scan, or null.
 	 * The cache lives 5 minutes; the stored URL keeps the JSON-LD fix on the
-	 * scanned page after that.
+	 * scanned page after that. With a last scan, only its own cached report
+	 * counts: the JSON-LD fix sends the last scan's ID with this page.
 	 */
 	public function cached_url(): ?string {
 		$cache = get_transient( SiteSetup::REPORT_CACHE );
 		$url   = is_array( $cache ) && is_array( $cache['report'] ?? null ) ? ( $cache['report']['url'] ?? null ) : null;
-		if ( is_string( $url ) && '' !== $url ) {
+		$last  = strtolower( $this->last_report_id() );
+		if ( is_string( $url ) && '' !== $url && ( '' === $last || strtolower( (string) ( $cache['id'] ?? '' ) ) === $last ) ) {
 			return $url;
 		}
 		$settings = get_option( SiteSetup::SETTINGS );
@@ -103,7 +241,7 @@ class Reports {
 	 * The state of the last scan. Without a connection, the state of a stored
 	 * scan: $scan_id when it is in the plugin's own list, else the newest.
 	 *
-	 * @param string $scan_id Scan ID of a stored scan, or ''. Ignored with a connection.
+	 * @param string $scan_id Scan ID of a stored scan, or ''. With a connection, a report ID from the recent list.
 	 * @return array|ApiError array( 'state' => 'none' ), array( 'state' => 'pending' ),
 	 *                        array( 'state' => 'failed', 'message' => string ),
 	 *                        array( 'state' => 'gone', 'message' => string ) or
@@ -114,22 +252,46 @@ class Reports {
 		if ( null !== $this->scans && null === $this->store->load() ) {
 			return $this->anonymous_state( $scan_id );
 		}
-		$id = $this->last_report_id();
+		$id = $this->shown_id( $scan_id );
 		if ( '' === $id ) {
 			return array( 'state' => 'none' );
 		}
 		$cache = get_transient( SiteSetup::REPORT_CACHE );
-		if ( is_array( $cache ) && ( $cache['id'] ?? '' ) === $id && is_array( $cache['report'] ?? null ) ) {
-			return array(
+		if ( is_array( $cache ) && strtolower( (string) ( $cache['id'] ?? '' ) ) === $id && is_array( $cache['report'] ?? null ) ) {
+			$state = array(
 				'state'  => 'complete',
 				'report' => $cache['report'],
 			);
+		} else {
+			$result = $this->client->request( 'GET', '/api/v1/reports/' . $id );
+			if ( $result instanceof ApiError ) {
+				return $this->state_for_error( $result, $id );
+			}
+			// Only the last scan is cached: cached_url() gives the JSON-LD fix its page.
+			$state = $this->complete( $id, $result, strtolower( $this->last_report_id() ) === $id );
 		}
-		$result = $this->client->request( 'GET', '/api/v1/reports/' . $id );
-		if ( $result instanceof ApiError ) {
-			return $this->state_for_error( $result );
+		$this->note_score( $id, $state );
+		return $state;
+	}
+
+	/**
+	 * Keep the score of a read report in the recent list. The last scan of a
+	 * site that scanned before the list existed joins it as the oldest entry.
+	 *
+	 * @param string $id    Report ID.
+	 * @param array  $state The report state.
+	 */
+	private function note_score( string $id, array $state ): void {
+		if ( ! isset( $state['report']['overall'] ) ) {
+			return;
 		}
-		return $this->complete( $id, $result );
+		$score = (int) $state['report']['overall'];
+		if ( $this->recent->has( $id ) ) {
+			$this->recent->set_score( $id, $score );
+			return;
+		}
+		$url = (string) ( $state['report']['url'] ?? '' );
+		$this->recent->append( $id, '' !== $url ? $url : (string) $this->cached_url(), (int) ( $state['report']['scanned_at'] ?? 0 ), $score );
 	}
 
 	/**
@@ -165,7 +327,11 @@ class Reports {
 			$state = $this->state_for_error( $result );
 			return is_array( $state ) ? $state + array( 'scan_id' => $id ) : $state;
 		}
-		return $this->complete( $id, $result ) + array( 'scan_id' => $id );
+		$state = $this->complete( $id, $result );
+		if ( isset( $state['report']['overall'] ) ) {
+			$this->scans->set_score( $id, (int) $state['report']['overall'] );
+		}
+		return $state + array( 'scan_id' => $id );
 	}
 
 	/**
@@ -176,14 +342,15 @@ class Reports {
 	 *
 	 * @param string $id     Report ID.
 	 * @param array  $result The `data` of the answer.
+	 * @param bool   $cache  Whether to cache the report.
 	 */
-	private function complete( string $id, array $result ): array {
+	private function complete( string $id, array $result, bool $cache = true ): array {
 		if ( ! is_array( $result['scores'] ?? null ) || isset( $result['statusUrl'] ) ) {
 			// 202: the scan still runs. The client returns the data of any 2xx.
 			return array( 'state' => 'pending' );
 		}
 		$report = self::summarize( $result );
-		if ( ! $report['ai_view']['screenshot_pending'] ) {
+		if ( $cache && ! $report['ai_view']['screenshot_pending'] ) {
 			set_transient(
 				SiteSetup::REPORT_CACHE,
 				array(
@@ -200,9 +367,16 @@ class Reports {
 	}
 
 	/**
-	 * Forget the last scan.
+	 * Forget the cached report. The recent scans stay (see claim()).
 	 */
-	public function forget(): void {
+	public function forget_cache(): void {
+		delete_transient( SiteSetup::REPORT_CACHE );
+	}
+
+	/**
+	 * Forget the last scan and the cached report.
+	 */
+	private function forget_last(): void {
 		$settings = get_option( SiteSetup::SETTINGS );
 		if ( is_array( $settings ) && ( array_key_exists( 'last_report_id', $settings ) || array_key_exists( 'last_report_url', $settings ) ) ) {
 			unset( $settings['last_report_id'], $settings['last_report_url'] );
@@ -215,7 +389,9 @@ class Reports {
 	 * Plan and site facts for the Connection tab. GenReady has no API that
 	 * returns the account email, so the tab does not show it.
 	 *
-	 * @return array|null array( 'method', 'plan', 'site_name', 'hostname', 'verified' ), or null when not connected.
+	 * @return array|null array( 'method', 'plan', 'credits', 'site_name', 'hostname', 'verified' ), or null when
+	 *                    not connected. credits is array( 'limit' => int|null, 'remaining' => int|null ) or null;
+	 *                    a null limit means no monthly limit.
 	 */
 	public function account(): ?array {
 		$connection = $this->store->load();
@@ -229,6 +405,7 @@ class Reports {
 		$account = array(
 			'method'    => 'oauth' === ( $connection['method'] ?? '' ) ? 'oauth' : 'api_key',
 			'plan'      => null,
+			'credits'   => null,
 			'site_name' => null,
 			'hostname'  => null,
 			'verified'  => null,
@@ -236,6 +413,9 @@ class Reports {
 		$usage   = $this->client->request( 'GET', '/api/v1/usage' );
 		if ( is_array( $usage ) && is_string( $usage['plan'] ?? null ) ) {
 			$account['plan'] = sanitize_text_field( $usage['plan'] );
+		}
+		if ( is_array( $usage ) ) {
+			$account['credits'] = self::credits( $usage['apiCredits'] ?? null );
 		}
 		$domains = $this->client->request( 'GET', '/api/v1/domains' );
 		$list    = is_array( $domains ) && is_array( $domains['domains'] ?? null ) ? $domains['domains'] : array();
@@ -250,6 +430,33 @@ class Reports {
 			set_transient( self::ACCOUNT_CACHE, $account, self::TTL );
 		}
 		return $account;
+	}
+
+	/**
+	 * The monthly API credits of the plan. A scan uses 1 credit.
+	 *
+	 * @param mixed $credits The usage answer's apiCredits.
+	 * @return array|null array( 'limit' => int|null, 'remaining' => int|null ), or null when GenReady did not say.
+	 */
+	private static function credits( $credits ): ?array {
+		if ( ! is_array( $credits ) || ! array_key_exists( 'limit', $credits ) ) {
+			return null;
+		}
+		$limit = $credits['limit'];
+		if ( null === $limit ) {
+			return array(
+				'limit'     => null,
+				'remaining' => null,
+			);
+		}
+		if ( ! is_numeric( $limit ) || (int) $limit < 0 ) {
+			return null;
+		}
+		$remaining = $credits['remaining'] ?? null;
+		return array(
+			'limit'     => (int) $limit,
+			'remaining' => is_numeric( $remaining ) ? max( 0, min( (int) $limit, (int) $remaining ) ) : null,
+		);
 	}
 
 	/**
@@ -295,13 +502,34 @@ class Reports {
 	 * Map a failed report call to a state.
 	 *
 	 * @param ApiError $error The failure.
+	 * @param string   $id    The report that failed, or ''.
 	 * @return array|ApiError
 	 */
-	private function state_for_error( ApiError $error ) {
+	private function state_for_error( ApiError $error, string $id = '' ) {
 		if ( 404 === $error->status ) {
 			// The report is gone (deleted, or not this site's). user_message() would say the site was removed.
-			$this->forget();
-			return array( 'state' => 'none' );
+			if ( '' !== $id ) {
+				$this->recent->forget( $id );
+			}
+			$gone = array(
+				'state'   => 'gone',
+				'message' => __( 'This scan is no longer available. Check the page again.', 'genready' ),
+			);
+			if ( '' !== $id && strtolower( $this->last_report_id() ) !== $id ) {
+				return $gone;
+			}
+			$this->forget_last();
+			$next = $this->recent->all()[0] ?? null;
+			if ( null === $next ) {
+				return array( 'state' => 'none' );
+			}
+			// The next newest scan becomes the last one, so the Overview opens it next time.
+			$settings                    = get_option( SiteSetup::SETTINGS );
+			$settings                    = is_array( $settings ) ? $settings : array();
+			$settings['last_report_id']  = $next['id'];
+			$settings['last_report_url'] = $next['url'];
+			update_option( SiteSetup::SETTINGS, $settings, false );
+			return $gone;
 		}
 		if ( 422 === $error->status && in_array( $error->code, array( 'ANALYSIS_FAILED', 'ANALYSIS_CANCELLED' ), true ) ) {
 			$message = Text::cap( sanitize_text_field( $error->message ), self::MAX_REASON );

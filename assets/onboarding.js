@@ -101,9 +101,14 @@
 	 *
 	 * @param {HTMLElement} region The status region of the form.
 	 * @param {Object}      error  The apiFetch error.
+	 * @param {string}      [url]  The address of a refused scan.
 	 */
-	function fail( region, error ) {
+	function fail( region, error, url ) {
 		var code = ui.errorCode( error );
+		if ( code === 'NOT_THIS_SITE' && ui.otherSiteLink ) {
+			ui.say( region, ui.errorText( error ), 'error', ui.otherSiteLink( url ) );
+			return;
+		}
 		if ( code === 'ACCOUNT_EXISTS' || code === 'VERIFIED_ELSEWHERE' ) {
 			ui.say( region, ui.errorText( error ), 'error', signInButton( region ) );
 			return;
@@ -142,7 +147,7 @@
 					var result = await ui.call( 'POST', '/scan', { url: input ? input.value : '' } );
 					await ui.poll( scanResult, result && typeof result.scan_id === 'string' ? result.scan_id : '' );
 				} catch ( error ) {
-					fail( scanResult, error );
+					fail( scanResult, error, input ? input.value : '' );
 				}
 			}, ui.connectionButtons );
 		} );

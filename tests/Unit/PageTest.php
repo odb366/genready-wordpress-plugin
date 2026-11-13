@@ -4,6 +4,7 @@ namespace GenReady\Tests\Unit;
 use Brain\Monkey;
 use GenReady\Admin\FixCards;
 use GenReady\Admin\Page;
+use GenReady\Admin\RecentReports;
 use GenReady\Admin\Reports;
 use GenReady\Api\ApiError;
 use GenReady\Compat\SeoPlugins;
@@ -211,6 +212,22 @@ class PageTest extends TestCase {
 		$this->assertSame( '', ob_get_clean() );
 	}
 
+	// Review 2026-11-12 MEDIUM: without a connection the fix cards also send the shown scan, so a JSON-LD
+	// Undo acts on the page on screen. A disconnect keeps the last report of the account.
+	public function test_without_a_connection_the_cards_send_the_shown_scan(): void {
+		$this->options['genready_settings'] = array( 'last_report_id' => self::SCAN3 );
+		$this->scans()->remember( self::SCAN1, 'https://example.com/about/', self::TOKEN );
+		$this->scans()->remember( self::SCAN2, 'https://example.com/', self::TOKEN );
+		$this->client->public_result = report_fixture( array( 'reportId' => self::SCAN1 ) );
+		$this->stub_views();
+		$_GET = array( 'scan' => self::SCAN1 );
+		$this->page()->enqueue( 'settings_page_genready' );
+		$this->assertStringContainsString( '"openScan":"' . self::SCAN1 . '"', $this->inline['genready-admin'] );
+		$reports = new Reports( $this->store, $this->client, $this->scans() );
+		$this->assertSame( 'https://example.com/about/', $reports->fix_report( self::SCAN1 )['url'] );
+		$this->assertSame( 'https://example.com/', $reports->fix_report( '' )['url'], 'no scan means the newest' );
+	}
+
 	public function test_callback_notice_is_read_once_and_starts_the_setup(): void {
 		$this->store->save( array( 'method' => 'oauth', 'access_token' => 'a', 'refresh_token' => 'r', 'domain_id' => 'd1' ) );
 		$this->transients['genready_notice_7'] = array( 'ok' => true );
@@ -222,6 +239,19 @@ class PageTest extends TestCase {
 
 	// Fix round A, G3: the robots.txt card runs do_robots(), which sends a header, so the
 	// Overview builds its cards on the load hook, before wp-admin prints anything.
+
+	// A new zip with the same version must not run the browser's copy of the old script.
+	public function test_each_build_loads_its_own_script_and_style(): void {
+		$versions = array();
+		Monkey\Functions\when( 'get_user_meta' )->justReturn( '1' );
+		Monkey\Functions\when( 'wp_enqueue_script' )->alias( function ( $h, $src = '', $deps = array(), $ver = false ) use ( &$versions ) { $versions[ $h ] = $ver; } );
+		Monkey\Functions\when( 'wp_enqueue_style' )->alias( function ( $h, $src = '', $deps = array(), $ver = false ) use ( &$versions ) { $versions[ 'style:' . $h ] = $ver; } );
+		$this->page()->enqueue( 'settings_page_genready' );
+		$dir = dirname( GENREADY_FILE ) . '/assets/';
+		$this->assertSame( GENREADY_VERSION . '.' . filemtime( $dir . 'admin.js' ), $versions['genready-admin'] );
+		$this->assertSame( GENREADY_VERSION . '.' . filemtime( $dir . 'admin.css' ), $versions['style:genready-admin'] );
+		$this->assertSame( GENREADY_VERSION . '.' . filemtime( $dir . 'onboarding.js' ), $versions['genready-onboarding'] );
+	}
 
 	public function test_the_overview_builds_the_cards_before_any_output(): void {
 		$hooks = array();
@@ -260,6 +290,7 @@ class PageTest extends TestCase {
 
 	const SCAN1 = '11111111-1111-4111-8111-111111111111';
 	const SCAN2 = '22222222-2222-4222-8222-222222222222';
+	const SCAN3 = '33333333-3333-4333-8333-333333333333';
 	const TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ';
 
 	public function test_the_first_screen_without_a_connection_or_a_scan_makes_no_call(): void {
@@ -290,7 +321,8 @@ class PageTest extends TestCase {
 		$this->assertStringContainsString( '<label for="genready-account-email">Email</label>', $html );
 		$this->assertStringContainsString( 'type="email" id="genready-account-email" class="regular-text" value="admin@example.com"', $html );
 		$this->assertStringContainsString( 'Create my free account', $html );
-		$this->assertStringContainsString( 'Creates a GenReady account for this email and adds this site to it. GenReady emails you a link to set your password.', $html );
+		$this->assertStringContainsString( 'Creates a free GenReady account for this email and adds this site to it. GenReady emails you a link to set your password.', $html );
+		$this->assertStringContainsString( 'After you create the account, the plugin adds a verification tag to your home page. The tag proves that you own this site. Visitors do not see it.', $html );
 		$this->assertStringContainsString( 'Check AI readiness', $html );
 		$this->assertStringNotContainsString( 'Recent scans', $html, 'only with 2 or more scans' );
 		$this->assertStringContainsString( 'How AI sees your homepage', $html );
@@ -306,6 +338,115 @@ class PageTest extends TestCase {
 		$this->assertStringContainsString( '<span aria-current="true">Home page</span>', $html );
 		$this->assertStringContainsString( 'options-general.php?page=genready&amp;scan=' . self::SCAN2 . '">/pricing/</a>', $html );
 		$this->assertSame( '/api/v1/wp/scans/' . self::SCAN1, $this->client->publics[0][1] );
+	}
+
+	public function test_the_recent_list_shows_each_score_with_its_band(): void {
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->scans()->remember( self::SCAN2, 'https://example.com/pricing/', self::TOKEN );
+		$this->scans()->set_score( self::SCAN1, 85 );
+		$this->client->public_result = report_fixture( array( 'reportId' => self::SCAN2 ) );
+		$html                        = $this->render();
+		$this->assertStringContainsString( '<th scope="col">Page</th>', $html );
+		$this->assertStringContainsString( '<th scope="col">Score</th>', $html );
+		$this->assertStringContainsString( '<span class="genready-pill genready-band--pass">85</span> <span class="genready-recent__band">Pass</span>', $html );
+		$this->assertStringContainsString( '<span class="genready-pill genready-band--fair">72</span> <span class="genready-recent__band">Fair</span>', $html, 'the open scan gets its score on this load' );
+		$this->assertStringContainsString( '<tr class="genready-recent__row is-current">', $html );
+	}
+
+	public function test_the_recent_list_says_when_a_scan_has_no_score_yet(): void {
+		$this->scans()->remember( self::SCAN1, 'https://example.com/', self::TOKEN );
+		$this->scans()->remember( self::SCAN2, 'https://example.com/pricing/', self::TOKEN );
+		$this->client->public_result = report_fixture( array( 'reportId' => self::SCAN2 ) );
+		$html                        = $this->render();
+		$this->assertStringContainsString( '<span class="genready-recent__none">No score yet</span>', $html );
+	}
+
+	public function test_the_connected_overview_has_the_page_field_and_the_recent_scans(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$this->options['genready_settings'] = array( 'last_report_id' => self::SCAN2, 'last_report_url' => 'https://example.com/pricing/' );
+		$recent                             = new RecentReports();
+		$recent->add( self::SCAN1, 'https://example.com/' );
+		$recent->add( self::SCAN2, 'https://example.com/pricing/' );
+		$recent->set_score( self::SCAN1, 85 );
+		$this->client->request_result = report_fixture( array( 'reportId' => self::SCAN2 ) );
+		$html                         = $this->render();
+		$this->assertStringNotContainsString( 'Save your site and track your score', $html );
+		$this->assertStringContainsString( 'type="url" id="genready-page-url"', $html );
+		$this->assertStringContainsString( 'Enter the address of any public page on this site. Each scan uses 1 API credit.', $html );
+		$this->assertStringContainsString( 'Check AI readiness', $html );
+		$this->assertStringContainsString( 'Recent scans', $html );
+		$this->assertStringContainsString( '<span aria-current="true">/pricing/</span>', $html );
+		$this->assertStringContainsString( 'options-general.php?page=genready&amp;scan=' . self::SCAN1 . '">Home page</a>', $html );
+		$this->assertStringContainsString( '<span class="genready-pill genready-band--pass">85</span>', $html );
+		$this->assertStringContainsString( '<span class="genready-pill genready-band--fair">72</span>', $html );
+		$this->assertStringContainsString( 'Scan again', $html );
+	}
+
+	public function test_the_connected_overview_opens_a_recent_scan(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$this->options['genready_settings'] = array( 'last_report_id' => self::SCAN2 );
+		$recent                             = new RecentReports();
+		$recent->add( self::SCAN1, 'https://example.com/' );
+		$recent->add( self::SCAN2, 'https://example.com/pricing/' );
+		$this->client->request_result = report_fixture( array( 'reportId' => self::SCAN1 ) );
+		$html                         = $this->render( array( 'scan' => self::SCAN1 ) );
+		$this->assertSame( '/api/v1/reports/' . self::SCAN1, $this->client->requests[0][1] );
+		$this->assertStringContainsString( '<span aria-current="true">Home page</span>', $html );
+	}
+
+	// Kris 2026-11-12: a scan of another page is not an older scan. Each page keeps its fixes.
+	public function test_a_scan_of_another_page_keeps_its_fixes(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$this->options['genready_settings'] = array( 'last_report_id' => self::SCAN2 );
+		$recent                             = new RecentReports();
+		$recent->add( self::SCAN1, 'https://example.com/' );
+		$recent->add( self::SCAN2, 'https://example.com/pricing/' );
+		$this->card_list              = array( array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied' ) );
+		$this->client->request_result = report_fixture( array( 'reportId' => self::SCAN1 ) );
+		$html                         = $this->render( array( 'scan' => self::SCAN1 ), true );
+		$this->assertStringContainsString( 'id="genready-fixes"', $html );
+		$this->assertStringContainsString( 'Fix with one click', $html );
+		$this->assertStringNotContainsString( 'genready-older', $html );
+	}
+
+	public function test_an_older_scan_of_the_same_page_shows_no_fixes_and_links_to_its_newest_scan(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$this->options['genready_settings'] = array( 'last_report_id' => self::SCAN3 );
+		$recent                             = new RecentReports();
+		$recent->add( self::SCAN1, 'https://example.com/' );
+		$recent->add( self::SCAN2, 'https://example.com/pricing/' );
+		$recent->add( self::SCAN3, 'https://www.example.com' );
+		$this->card_list              = array( array( 'kind' => 'robots', 'title' => 'robots.txt', 'state' => 'not_applied', 'state_text' => 'Not applied' ) );
+		$this->client->request_result = report_fixture( array( 'reportId' => self::SCAN1 ) );
+		$older                        = $this->render( array( 'scan' => self::SCAN1 ), true );
+		$this->assertStringNotContainsString( 'id="genready-fixes"', $older );
+		$this->assertStringNotContainsString( 'Fix with one click', $older );
+		$this->assertStringContainsString( 'This is an older scan of this page. Fixes are only available on the newest scan.', $older );
+		$this->assertStringContainsString( '<a href="https://example.com/wp-admin/options-general.php?page=genready&amp;scan=' . self::SCAN3 . '">Open the newest scan</a>', $older );
+	}
+
+	// WordPress loads the scripts first, so the report is read before render().
+	public function test_a_gone_older_scan_marks_no_row_also_after_the_scripts_loaded(): void {
+		Monkey\Functions\when( 'get_user_meta' )->justReturn( '1' );
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$this->options['genready_settings'] = array( 'last_report_id' => self::SCAN2 );
+		$recent                             = new RecentReports();
+		$recent->add( self::SCAN1, 'https://example.com/' );
+		$recent->add( 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'https://example.com/about/' );
+		$recent->add( self::SCAN2, 'https://example.com/pricing/' );
+		$this->client->request_result = new ApiError( 404, 'NOT_FOUND', 'Report not found' );
+		$html                         = $this->render( array( 'scan' => self::SCAN1 ), true );
+		$this->assertStringContainsString( 'This scan is no longer available. Check the page again.', $html );
+		$this->assertStringContainsString( 'Recent scans', $html );
+		$this->assertStringNotContainsString( 'aria-current="true"', substr( $html, (int) strpos( $html, 'genready-recent' ) ) );
+	}
+
+	public function test_the_connected_overview_without_a_scan_has_the_page_field(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$html = $this->render();
+		$this->assertStringContainsString( 'type="url" id="genready-page-url"', $html );
+		$this->assertStringNotContainsString( 'Recent scans', $html );
+		$this->assertSame( array(), $this->client->requests );
 	}
 
 	// PHP L1: 00:30 in Sofia is the day before in UTC; the list shows the site's date.
@@ -343,6 +484,7 @@ class PageTest extends TestCase {
 		$html                                  = $this->render();
 		$this->assertStringContainsString( 'GenReady paused free scans for now. Connect with a GenReady account.', $html );
 		$this->assertStringContainsString( 'Connect to GenReady', $html );
+		$this->assertStringContainsString( "Connecting sends this site&#039;s address to genready.ai. The plugin then adds a verification tag to your home page. The tag proves that you own this site. Visitors do not see it.", $html, 'the admin reads about the tag before the click' );
 		$this->assertStringContainsString( 'id="genready-account"', $html, 'the fix card link still has a target' );
 		$this->assertStringNotContainsString( 'Check this page', $html );
 		$this->assertStringNotContainsString( 'genready-account-form', $html );

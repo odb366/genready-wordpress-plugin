@@ -63,6 +63,14 @@ class PageUrlTest extends TestCase {
 		}
 	}
 
+	public function test_same_page_ignores_scheme_www_case_slash_and_fragment(): void {
+		$this->assertTrue( PageUrl::same_page( 'https://example.com/pricing/', 'http://www.EXAMPLE.com/pricing#plans' ) );
+		$this->assertFalse( PageUrl::same_page( 'https://example.com/pricing/', 'https://example.com/' ) );
+		$this->assertFalse( PageUrl::same_page( 'not a url', 'not a url' ) );
+		$this->permalinks = '';
+		$this->assertFalse( PageUrl::same_page( 'https://example.com/?page_id=2', 'https://example.com/?page_id=3' ), 'with plain permalinks the query names the page' );
+	}
+
 	public function test_home_test_with_a_home_in_a_subfolder(): void {
 		$this->home = 'https://example.com/blog';
 		$this->assertTrue( PageUrl::is_home( 'https://example.com/blog/' ) );

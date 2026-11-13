@@ -17,6 +17,7 @@ use GenReady\Connection\TokenStore;
 use GenReady\Fixes\JsonLdFix;
 use GenReady\Onboarding\AccountCreator;
 use GenReady\Onboarding\AnonymousScans;
+use GenReady\Onboarding\PageUrl;
 use GenReady\Onboarding\RestArgs;
 use GenReady\Support\Text;
 use GenReady\Verification\MetaTag;
@@ -218,6 +219,12 @@ final class Rest {
 			array(
 				'content_signal' => $boolean,
 				'as_file'        => $boolean,
+				// The report the Overview shows. The JSON-LD fix uses the newest scan of its page.
+				'scan'           => array(
+					'type'              => 'string',
+					'default'           => '',
+					'validate_callback' => array( RestArgs::class, 'validate_scan_id' ),
+				),
 				'tagline'        => array(
 					'type'              => 'string',
 					'sanitize_callback' => 'sanitize_textarea_field',
@@ -259,18 +266,23 @@ final class Rest {
 		}
 		$this->reports->forget_account();
 		$this->scans->clear(); // A new connection ends the scans without an account (spec R20).
-		return array( 'ok' => true );
+		// With earlier scans of this account, the page shows them and starts no scan.
+		return array(
+			'ok'        => true,
+			'has_scans' => $this->reports->has_scans(),
+		);
 	}
 
 	/**
-	 * End the connection. Applied fixes and the verification tag stay.
+	 * End the connection. Applied fixes, the verification tag and the recent
+	 * scans stay. The scans come back when the same account connects again.
 	 *
 	 * @param \WP_REST_Request $request Request.
 	 * @return array array( 'ok' => true ).
 	 */
 	public function disconnect( $request ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- REST callback signature.
 		$this->oauth->revoke();
-		$this->reports->forget();
+		$this->reports->forget_cache();
 		$this->reports->forget_account();
 		$this->scans->clear();
 		foreach ( FixCards::KINDS as $kind ) {
@@ -290,13 +302,16 @@ final class Rest {
 			return $this->reconnect();
 		}
 		$result = $this->setup->verify();
+		// The setup prints the tag before it asks GenReady, so a failed check can leave the tag on.
+		$tag_on = MetaTag::is_valid( get_option( MetaTag::OPTION ) );
 		if ( isset( $result['error'] ) ) {
-			return $this->failure( $result );
+			return $this->failure( $result, array( 'tag_on' => $tag_on ) );
 		}
 		$this->reports->forget_account();
 		return array(
 			'verified' => true === ( $result['verified'] ?? false ),
 			'detail'   => (string) ( $result['detail'] ?? '' ),
+			'tag_on'   => $tag_on,
 		);
 	}
 
@@ -314,10 +329,16 @@ final class Rest {
 			return $this->error( __( 'Enter an address on this site.', 'genready' ), 'NOT_THIS_SITE' );
 		}
 		if ( null !== $this->store->load() ) {
+			if ( '' !== $url && ! PageUrl::is_on_site( $url ) ) {
+				// The admin typed this address. Never scan the home page instead.
+				return $this->error( __( 'Enter an address on this site.', 'genready' ), 'NOT_THIS_SITE' );
+			}
+			$this->reports->claim(); // The new scan joins the list of this account only.
 			$result = $this->setup->scan( $url );
 			if ( isset( $result['error'] ) ) {
 				return $this->failure( $result );
 			}
+			$this->reports->forget_account(); // The Account tab shows the credits left.
 			return array( 'report_id' => (string) $result['report_id'] );
 		}
 		$result = $this->scans->start( '' === $url ? home_url( '/' ) : $url );
@@ -328,21 +349,14 @@ final class Rest {
 	}
 
 	/**
-	 * The state of the last scan, or of a stored scan without a connection, for the page's poll.
+	 * The state of the last scan, or of a scan from the recent list, for the page's poll.
 	 *
 	 * @param \WP_REST_Request $request Request with an optional scan ID.
 	 * @return array|\WP_Error See Reports::state().
 	 */
 	public function report( $request ) {
-		if ( null === $this->store->load() ) {
-			// The stored scan IDs are lower case (AnonymousScans::remember()).
-			$state = $this->reports->state( strtolower( (string) $request->get_param( 'scan' ) ) );
-			return $state instanceof ApiError ? $this->api_error( $state ) : $state;
-		}
-		if ( '' === $this->reports->last_report_id() ) {
-			return array( 'state' => 'none' );
-		}
-		$state = $this->reports->state();
+		// The stored IDs are lower case (AnonymousScans::remember(), RecentReports::add()).
+		$state = $this->reports->state( strtolower( (string) $request->get_param( 'scan' ) ) );
 		return $state instanceof ApiError ? $this->api_error( $state ) : $state;
 	}
 
@@ -426,7 +440,7 @@ final class Rest {
 			case 'apply':
 				return $this->apply( $kind, $request );
 			case 'undo':
-				return $this->undo( $kind );
+				return $this->undo( $kind, self::scan_param( $request ) );
 			case 'live-check':
 				return $this->live_check( $kind );
 		}
@@ -496,15 +510,15 @@ final class Rest {
 			$tagline = $request->get_param( 'tagline' );
 			$result  = $this->cards->llms()->preview( is_string( $tagline ) ? array( 'tagline' => $tagline ) : array() );
 		} else {
-			$url    = $this->reports->cached_url();
+			$report = $this->reports->fix_report( self::scan_param( $request ) );
 			$result = $this->cards->jsonld()->preview(
-				$this->reports->last_report_id(),
-				null === $url ? home_url( '/' ) : $url,
+				$report['id'],
+				null === $report['url'] ? home_url( '/' ) : $report['url'],
 				$this->sanitize_values( $request->get_param( 'values' ) )
 			);
 		}
 		if ( $result instanceof ApiError ) {
-			if ( 'PLAN_REQUIRED' === $result->code && $this->cards->is_applied( $kind, $this->target( $kind ) ) ) {
+			if ( 'PLAN_REQUIRED' === $result->code && $this->cards->is_applied( $kind, $this->target( $kind, self::scan_param( $request ) ) ) ) {
 				return $this->error( __( 'This file does not update on the Free plan.', 'genready' ), 'PLAN_REQUIRED', 402 );
 			}
 			return $this->api_error( $result );
@@ -534,6 +548,10 @@ final class Rest {
 		} elseif ( 'llms' === $kind ) {
 			$result = $this->cards->llms()->apply( $preview, true === $request->get_param( 'as_file' ) );
 		} else {
+			if ( ( $preview['target'] ?? null ) !== $this->target( $kind, self::scan_param( $request ) ) ) {
+				// The kept preview is for another page, for example from a second browser tab.
+				return $this->error( __( 'The preview expired. Preview again.', 'genready' ), 'PREVIEW_EXPIRED' );
+			}
 			$values = $this->sanitize_values( $request->get_param( 'values' ) );
 			if ( array() !== $values ) {
 				$preview = $this->cards->jsonld()->fill( $preview, $values );
@@ -544,27 +562,38 @@ final class Rest {
 			return $this->failure( $result );
 		}
 		delete_transient( $key );
-		return $this->done( $kind );
+		return $this->done( $kind, self::scan_param( $request ) );
 	}
 
 	/**
 	 * Undo a fix. It needs no connection.
 	 *
 	 * @param string $kind Fix kind.
+	 * @param string $scan The report the Overview shows, or ''.
 	 * @return array|\WP_Error
 	 */
-	private function undo( string $kind ) {
+	private function undo( string $kind, string $scan ) {
 		if ( 'robots' === $kind ) {
 			$result = $this->cards->robots()->undo();
 		} elseif ( 'llms' === $kind ) {
 			$result = $this->cards->llms()->undo();
 		} else {
-			$result = $this->cards->jsonld()->undo( $this->target( $kind ) );
+			$result = $this->cards->jsonld()->undo( $this->target( $kind, $scan ) );
 		}
 		if ( isset( $result['error'] ) ) {
 			return $this->failure( $result );
 		}
-		return $this->done( $kind );
+		return $this->done( $kind, $scan );
+	}
+
+	/**
+	 * The scan argument of a fix request, in lower case like the stored IDs.
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 */
+	private static function scan_param( $request ): string {
+		$scan = $request->get_param( 'scan' );
+		return is_string( $scan ) ? strtolower( $scan ) : '';
 	}
 
 	/**
@@ -627,21 +656,23 @@ final class Rest {
 	 * The answer after a change: ok and the new card.
 	 *
 	 * @param string $kind Fix kind.
+	 * @param string $scan The report the Overview shows, or ''.
 	 */
-	private function done( string $kind ): array {
+	private function done( string $kind, string $scan = '' ): array {
 		return array(
 			'ok'   => true,
-			'card' => $this->cards->card( $kind, $this->target( $kind ) ),
+			'card' => $this->cards->card( $kind, $this->target( $kind, $scan ) ),
 		);
 	}
 
 	/**
-	 * The page the JSON-LD fix is for. Other kinds need no target.
+	 * The page the JSON-LD fix is for: the page of the shown report. Other kinds need no target.
 	 *
 	 * @param string $kind Fix kind.
+	 * @param string $scan The report the Overview shows, or ''.
 	 */
-	private function target( string $kind ): array {
-		return 'jsonld' === $kind ? $this->cards->jsonld_target( $this->reports->cached_url() ) : array();
+	private function target( string $kind, string $scan = '' ): array {
+		return 'jsonld' === $kind ? $this->cards->jsonld_target( $this->reports->fix_report( $scan )['url'] ) : array();
 	}
 
 	/**
@@ -724,10 +755,11 @@ final class Rest {
 	 * next step.
 	 *
 	 * @param array $result array( 'error' => string, 'code'? => string, 'status'? => int|null ).
+	 * @param array $extra  More error data for the script, for example array( 'tag_on' => bool ).
 	 */
-	private function failure( array $result ): \WP_Error {
+	private function failure( array $result, array $extra = array() ): \WP_Error {
 		$code = is_string( $result['code'] ?? null ) && '' !== $result['code'] ? $result['code'] : 'GENREADY_ERROR';
-		return $this->error( (string) $result['error'], $code, self::status_for( $code, $result['status'] ?? null ) );
+		return $this->error( (string) $result['error'], $code, self::status_for( $code, $result['status'] ?? null ), $extra );
 	}
 
 	/**
@@ -750,15 +782,16 @@ final class Rest {
 	 * @param string $message Plain text for the admin.
 	 * @param string $code    Machine code for the script.
 	 * @param int    $status  400, 402 or 429.
+	 * @param array  $extra   More data for the script. It cannot replace status or genready_code.
 	 */
-	private function error( string $message, string $code = 'GENREADY_ERROR', int $status = 400 ): \WP_Error {
+	private function error( string $message, string $code = 'GENREADY_ERROR', int $status = 400, array $extra = array() ): \WP_Error {
 		return new \WP_Error(
 			'genready_error',
 			$message,
 			array(
 				'status'        => in_array( $status, array( 400, 402, 429 ), true ) ? $status : 400,
 				'genready_code' => $code,
-			)
+			) + $extra
 		);
 	}
 }

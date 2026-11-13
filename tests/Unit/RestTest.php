@@ -3,6 +3,7 @@ namespace GenReady\Tests\Unit;
 
 use Brain\Monkey;
 use GenReady\Admin\FixCards;
+use GenReady\Admin\RecentReports;
 use GenReady\Admin\Reports;
 use GenReady\Api\ApiError;
 use GenReady\Compat\SeoPlugins;
@@ -111,6 +112,28 @@ class RestTest extends RestTestCase {
 		$this->assertSame( 'RATE_LIMITED', $result->get_error_data()['genready_code'] );
 	}
 
+	public function test_verify_reports_the_tag_also_when_genready_does_not_find_it(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1', 'verification_token' => 'tok12345678' ) );
+		$this->client->request_result = array( 'verified' => false, 'detail' => 'Tag not found on the home page.' );
+		$result                       = $this->rest()->verify( new FakeRequest() );
+		$this->assertSame( array( 'verified' => false, 'detail' => 'Tag not found on the home page.', 'tag_on' => true ), $result, 'the plugin prints the tag before GenReady checks it' );
+	}
+
+	public function test_a_failed_verify_says_whether_the_tag_is_on(): void {
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1', 'verification_token' => 'tok12345678' ) );
+		$this->client->request_result = new ApiError( 500, 'INTERNAL', '' );
+		$result                       = $this->rest()->verify( new FakeRequest() );
+		$this->assertInstanceOf( \WP_Error::class, $result );
+		$this->assertTrue( $result->get_error_data()['tag_on'], 'the call failed after the plugin printed the tag' );
+
+		// Without a token the plugin asks GenReady for one first. That call fails before the tag is printed.
+		$this->options = array( 'blog_public' => '1' );
+		$this->store->save( array( 'method' => 'api_key', 'api_key' => 'gr_live_abcdefghijklmnop', 'domain_id' => 'd1' ) );
+		$result = $this->rest()->verify( new FakeRequest() );
+		$this->assertInstanceOf( \WP_Error::class, $result );
+		$this->assertFalse( $result->get_error_data()['tag_on'] );
+	}
+
 	public function test_agent_standard_not_found_is_a_warning(): void {
 		$report = Reports::summarize( report_fixture() );
 		$this->assertSame( 'warn', $report['sections']['agents'][0]['verdict'] );
@@ -174,7 +197,7 @@ class RestTest extends RestTestCase {
 		$this->files->put( 'robots.txt', self::BASE );
 		$this->client->request_result = new ApiError( 402, 'PLAN_REQUIRED', 'Upgrade' );
 		$result                       = $this->fix( $this->rest(), 'robots', 'preview' );
-		$this->assert_error( $result, 'GenReady Pro and Agency generate this file.', 402 );
+		$this->assert_error( $result, 'To apply this fix, you need a paid GenReady plan (Pro or Agency).', 402 );
 		$this->assertSame( 'PLAN_REQUIRED', $result->get_error_data()['genready_code'] );
 		$this->assertArrayNotHasKey( 'genready_preview_robots_7', $this->transients );
 	}
@@ -226,6 +249,257 @@ class RestTest extends RestTestCase {
 		$this->assertArrayNotHasKey( 'genready_report_cache', $this->transients );
 		$this->assertStringNotContainsString( 'removed', (string) json_encode( $result ) );
 		$this->assertSame( array( 'GET', '/api/v1/reports/' . self::REPORT_ID, null ), $this->client->requests[0] );
+	}
+
+	const OLDER_ID = '66666666-7777-4888-9999-000000000000';
+
+	public function test_scan_with_a_connection_adds_the_page_to_the_recent_scans(): void {
+		$this->connect();
+		$this->client->request_result = array( 'reportId' => self::REPORT_ID );
+		$this->rest()->scan( new FakeRequest( array( 'url' => 'https://example.com/pricing/' ) ) );
+		$recent = ( new RecentReports() )->all();
+		$this->assertSame( self::REPORT_ID, $recent[0]['id'] );
+		$this->assertSame( 'https://example.com/pricing/', $recent[0]['url'] );
+		$this->assertNull( $recent[0]['score'] );
+	}
+
+	public function test_scan_with_a_connection_refuses_another_site_without_a_call(): void {
+		$this->connect();
+		$result = $this->rest()->scan( new FakeRequest( array( 'url' => 'https://example.org/' ) ) );
+		$this->assertInstanceOf( \WP_Error::class, $result );
+		$this->assertSame( 'Enter an address on this site.', $result->get_error_message() );
+		$this->assertSame( array(), $this->client->requests );
+	}
+
+	public function test_report_with_a_connection_opens_a_recent_scan_and_keeps_its_score(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID );
+		$recent                             = new RecentReports();
+		$recent->add( self::OLDER_ID, 'https://example.com/a/' );
+		$recent->add( self::REPORT_ID, 'https://example.com/' );
+		$this->client->request_result = report_fixture( array( 'reportId' => self::OLDER_ID ) );
+		$result                       = $this->rest()->report( new FakeRequest( array( 'scan' => self::OLDER_ID ) ) );
+		$this->assertSame( 'complete', $result['state'] );
+		$this->assertSame( array( 'GET', '/api/v1/reports/' . self::OLDER_ID, null ), $this->client->requests[0] );
+		$scores = array_column( ( new RecentReports() )->all(), 'score', 'id' );
+		$this->assertSame( array( self::REPORT_ID => null, self::OLDER_ID => 72 ), $scores );
+	}
+
+	public function test_report_with_a_connection_opens_the_last_scan_for_an_id_outside_the_list(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID );
+		$this->client->request_result       = report_fixture();
+		$this->rest()->report( new FakeRequest( array( 'scan' => self::OLDER_ID ) ) );
+		$this->assertSame( '/api/v1/reports/' . self::REPORT_ID, $this->client->requests[0][1] );
+	}
+
+	public function test_report_404_of_an_older_scan_drops_only_that_scan(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID, 'last_report_url' => 'https://example.com/' );
+		$recent                             = new RecentReports();
+		$recent->add( self::OLDER_ID, 'https://example.com/a/' );
+		$recent->add( self::REPORT_ID, 'https://example.com/' );
+		$this->client->request_result = new ApiError( 404, 'NOT_FOUND', 'Report not found' );
+		$result                       = $this->rest()->report( new FakeRequest( array( 'scan' => self::OLDER_ID ) ) );
+		$this->assertSame( array( 'state' => 'gone', 'message' => 'This scan is no longer available. Check the page again.' ), $result );
+		$this->assertSame( self::REPORT_ID, $this->options['genready_settings']['last_report_id'] );
+		$this->assertSame( array( self::REPORT_ID ), array_column( ( new RecentReports() )->all(), 'id' ) );
+	}
+
+	// A site that scanned with plugin 1.2.2 or older has a last report but no list.
+	public function test_a_last_report_from_before_the_list_joins_it_and_stays_after_a_new_scan(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID, 'last_report_url' => 'https://example.com/' );
+		$this->client->request_result       = report_fixture();
+		$this->rest()->report( new FakeRequest() );
+		$this->assertSame( array( array( 'id' => self::REPORT_ID, 'url' => 'https://example.com/', 'at' => strtotime( '2026-10-09T10:01:00Z' ), 'score' => 72 ) ), ( new RecentReports() )->all() );
+
+		$this->client->request_result = array( 'reportId' => self::OLDER_ID );
+		$this->rest()->scan( new FakeRequest( array( 'url' => 'https://example.com/a/' ) ) );
+		$this->assertSame( array( self::OLDER_ID, self::REPORT_ID ), array_column( ( new RecentReports() )->all(), 'id' ) );
+	}
+
+	// Review HIGH: the JSON-LD preview sends the last report's ID, so its page must be the last report's page.
+	public function test_an_older_report_opened_on_the_overview_does_not_move_the_jsonld_page(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID, 'last_report_url' => 'https://example.com/' );
+		$recent                             = new RecentReports();
+		$recent->add( self::OLDER_ID, 'https://example.com/a/' );
+		$recent->add( self::REPORT_ID, 'https://example.com/' );
+		$this->transients['genready_report_cache'] = array( 'id' => self::REPORT_ID, 'report' => array( 'url' => 'https://example.com/' ) );
+		$this->client->request_result              = report_fixture( array( 'reportId' => self::OLDER_ID, 'url' => 'https://example.com/a/' ) );
+		$this->assertSame( 'complete', $this->rest()->report( new FakeRequest( array( 'scan' => self::OLDER_ID ) ) )['state'] );
+		$this->assertSame( self::REPORT_ID, $this->transients['genready_report_cache']['id'], 'the cache keeps the last report' );
+		$this->assertSame( 'https://example.com/', ( new Reports( $this->store, $this->client ) )->cached_url() );
+
+		// A cache from another report never gives the page.
+		$this->transients['genready_report_cache'] = array( 'id' => self::OLDER_ID, 'report' => array( 'url' => 'https://example.com/a/' ) );
+		$this->assertSame( 'https://example.com/', ( new Reports( $this->store, $this->client ) )->cached_url() );
+	}
+
+	public function test_a_404_on_the_last_report_makes_the_next_scan_the_last(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID, 'last_report_url' => 'https://example.com/' );
+		$recent                             = new RecentReports();
+		$recent->add( self::OLDER_ID, 'https://example.com/a/' );
+		$recent->add( self::REPORT_ID, 'https://example.com/' );
+		$this->client->request_result = new ApiError( 404, 'NOT_FOUND', 'Report not found' );
+		$result                       = $this->rest()->report( new FakeRequest() );
+		$this->assertSame( array( 'state' => 'gone', 'message' => 'This scan is no longer available. Check the page again.' ), $result );
+		$this->assertSame( self::OLDER_ID, $this->options['genready_settings']['last_report_id'] );
+		$this->assertSame( 'https://example.com/a/', $this->options['genready_settings']['last_report_url'] );
+		$this->assertSame( array( self::OLDER_ID ), array_column( ( new RecentReports() )->all(), 'id' ) );
+	}
+
+	// Kris 2026-11-12: after a disconnect and a new connection of the same account, the scans are still there.
+	public function test_disconnect_keeps_the_recent_scans_for_the_same_account(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID, 'last_report_url' => 'https://example.com/' );
+		( new RecentReports() )->add( self::REPORT_ID, 'https://example.com/' );
+		$this->rest()->disconnect( new FakeRequest() );
+		$this->assertSame( array( self::REPORT_ID ), array_column( ( new RecentReports() )->all(), 'id' ) );
+		$this->assertSame( self::REPORT_ID, $this->options['genready_settings']['last_report_id'] );
+
+		$this->connect();
+		$this->assertTrue( ( new Reports( $this->store, $this->client ) )->has_scans() );
+		$this->client->request_result = report_fixture();
+		$this->assertSame( 'complete', $this->rest()->report( new FakeRequest() )['state'] );
+		$this->assertSame( '/api/v1/reports/' . self::REPORT_ID, $this->client->requests[0][1] );
+	}
+
+	public function test_a_connection_to_another_account_starts_with_no_scans(): void {
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID, 'last_report_url' => 'https://example.com/', Reports::OWNER => 'd9', 'other' => 1 );
+		( new RecentReports() )->add( self::REPORT_ID, 'https://example.com/' );
+		$this->transients['genready_report_cache'] = array( 'id' => self::REPORT_ID, 'report' => array( 'url' => 'https://example.com/' ) );
+		$this->connect();
+		$this->assertSame( array( 'state' => 'none' ), $this->rest()->report( new FakeRequest() ) );
+		$this->assertSame( array(), $this->client->requests, 'a report of the other account is never read' );
+		$this->assertSame( array(), ( new RecentReports() )->all() );
+		$this->assertSame( array( Reports::OWNER => 'd1', 'other' => 1 ), $this->options['genready_settings'] );
+		$this->assertArrayNotHasKey( 'genready_report_cache', $this->transients );
+	}
+
+	// PHP review LOW: a scan with another account's connection clears the old list before it adds the new scan.
+	public function test_a_scan_with_another_account_starts_a_new_list(): void {
+		$this->options['genready_settings'] = array( 'last_report_id' => self::OLDER_ID, Reports::OWNER => 'd9' );
+		( new RecentReports() )->add( self::OLDER_ID, 'https://example.com/' );
+		$this->connect();
+		$this->client->request_result = array( 'reportId' => self::REPORT_ID );
+		$this->rest()->scan( new FakeRequest( array( 'url' => 'https://example.com/pricing/' ) ) );
+		$this->assertSame( array( self::REPORT_ID ), array_column( ( new RecentReports() )->all(), 'id' ) );
+		$this->assertSame( 'd1', $this->options['genready_settings'][ Reports::OWNER ] );
+		$this->assertSame( self::REPORT_ID, $this->options['genready_settings']['last_report_id'] );
+	}
+
+	public function test_a_list_without_an_owner_belongs_to_the_connection(): void {
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID );
+		( new RecentReports() )->add( self::REPORT_ID, 'https://example.com/' );
+		$this->connect();
+		$this->assertTrue( ( new Reports( $this->store, $this->client ) )->has_scans() );
+		$this->assertSame( 'd1', $this->options['genready_settings'][ Reports::OWNER ] );
+	}
+
+	public function test_connect_key_says_whether_the_account_has_earlier_scans(): void {
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID, Reports::OWNER => 'd1' );
+		( new RecentReports() )->add( self::REPORT_ID, 'https://example.com/' );
+		$this->client->request_result = array( 'domain' => array( 'id' => 'd1', 'verificationToken' => 'tok12345678' ) );
+		$this->assertSame( array( 'ok' => true, 'has_scans' => true ), $this->rest()->connect_key( new FakeRequest( array( 'key' => 'gr_live_abcdefghijklmnop' ) ) ) );
+
+		$this->rest()->disconnect( new FakeRequest() );
+		$this->client->request_result = array( 'domain' => array( 'id' => 'd2', 'verificationToken' => 'tok12345678' ) );
+		$this->assertSame( array( 'ok' => true, 'has_scans' => false ), $this->rest()->connect_key( new FakeRequest( array( 'key' => 'gr_live_abcdefghijklmnop' ) ) ) );
+		$this->assertSame( array(), ( new RecentReports() )->all() );
+	}
+
+	public function test_a_scan_with_a_connection_clears_the_cached_account_facts(): void {
+		$this->connect();
+		$this->transients['genready_account_cache'] = array( 'plan' => 'free' );
+		$this->client->request_result              = array( 'reportId' => self::REPORT_ID );
+		$this->rest()->scan( new FakeRequest( array( 'url' => 'https://example.com/' ) ) );
+		$this->assertArrayNotHasKey( 'genready_account_cache', $this->transients );
+	}
+
+	public function test_the_account_facts_have_the_credits_of_the_plan(): void {
+		$this->connect();
+		$this->client->request_result = array(
+			'plan'       => 'free',
+			'apiCredits' => array( 'used' => 3, 'limit' => 25, 'remaining' => 22 ),
+		);
+		$account = ( new Reports( $this->store, $this->client ) )->account();
+		$this->assertSame( array( 'limit' => 25, 'remaining' => 22 ), $account['credits'] );
+
+		$this->transients             = array();
+		$this->client->request_result = array( 'plan' => 'agency', 'apiCredits' => array( 'used' => 3, 'limit' => null, 'remaining' => null ) );
+		$this->assertSame( array( 'limit' => null, 'remaining' => null ), ( new Reports( $this->store, $this->client ) )->account()['credits'] );
+
+		$this->transients             = array();
+		$this->client->request_result = array( 'plan' => 'free' );
+		$this->assertNull( ( new Reports( $this->store, $this->client ) )->account()['credits'] );
+	}
+
+	// Kris 2026-11-12: each page keeps its fixes. The JSON-LD fix uses the shown scan's report and page.
+	public function test_jsonld_preview_uses_the_report_and_page_of_the_shown_scan(): void {
+		$this->connect();
+		Monkey\Functions\when( 'url_to_postid' )->justReturn( 0 );
+		Monkey\Functions\when( 'get_bloginfo' )->justReturn( 'Example' );
+		Monkey\Functions\when( 'wp_strip_all_tags' )->alias( 'strip_tags' );
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID, 'last_report_url' => 'https://example.com/pricing/' );
+		$recent                             = new RecentReports();
+		$recent->add( self::OLDER_ID, 'https://example.com/' );
+		$recent->add( self::REPORT_ID, 'https://example.com/pricing/' );
+		$this->client->request_result = array(
+			'type'     => 'Organization',
+			'node'     => array( '@type' => 'Organization', 'name' => 'Example' ),
+			'missing'  => array(),
+			'changed'  => true,
+			'summary'  => array(),
+			'notes'    => array(),
+			'existing' => array( 'types' => array(), 'missingProps' => array() ),
+		);
+		$rest    = $this->rest();
+		$preview = $this->fix( $rest, 'jsonld', 'preview', array( 'scan' => strtoupper( self::OLDER_ID ) ) );
+		$this->assertSame( 'Organization', $preview['type'] );
+		$this->assertSame( self::OLDER_ID, $this->client->requests[0][2]['reportId'] );
+
+		// Without a scan the fix uses the last scan: /pricing/ is no post here, so GenReady is not asked.
+		$this->client->requests = array();
+		$this->assert_error( $this->fix( $rest, 'jsonld', 'preview' ), 'GenReady adds JSON-LD only to a post, a page or the home page of this site.' );
+		$this->assertSame( array(), $this->client->requests );
+	}
+
+	public function test_jsonld_preview_of_an_older_scan_uses_the_newest_scan_of_its_page(): void {
+		$this->connect();
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID );
+		$recent                             = new RecentReports();
+		$recent->add( self::OLDER_ID, 'https://example.com/' );
+		$recent->add( self::REPORT_ID, 'https://www.example.com' );
+		$this->assertSame( array( 'id' => self::REPORT_ID, 'url' => 'https://www.example.com' ), ( new Reports( $this->store, $this->client ) )->fix_report( self::OLDER_ID ) );
+		$this->assertFalse( ( new Reports( $this->store, $this->client ) )->is_newest( self::OLDER_ID ) );
+	}
+
+	public function test_jsonld_apply_refuses_a_preview_of_another_page(): void {
+		$this->connect();
+		Monkey\Functions\when( 'url_to_postid' )->alias( function ( $url ) { return false !== strpos( $url, 'pricing' ) ? 42 : 0; } );
+		Monkey\Functions\when( 'get_bloginfo' )->justReturn( 'Example' );
+		Monkey\Functions\when( 'wp_strip_all_tags' )->alias( 'strip_tags' );
+		$this->options['genready_settings'] = array( 'last_report_id' => self::REPORT_ID );
+		$recent                             = new RecentReports();
+		$recent->add( self::OLDER_ID, 'https://example.com/' );
+		$recent->add( self::REPORT_ID, 'https://example.com/pricing/' );
+		$this->client->request_result = array(
+			'type'     => 'Organization',
+			'node'     => array( '@type' => 'Organization', 'name' => 'Example' ),
+			'missing'  => array(),
+			'changed'  => true,
+			'summary'  => array(),
+			'notes'    => array(),
+			'existing' => array( 'types' => array(), 'missingProps' => array() ),
+		);
+		$rest = $this->rest();
+		$this->fix( $rest, 'jsonld', 'preview', array( 'scan' => self::OLDER_ID ) );
+		// A second tab with the /pricing/ scan clicks Apply.
+		$this->assert_error( $this->fix( $rest, 'jsonld', 'apply' ), 'The preview expired. Preview again.' );
+		$this->assertSame( array(), $this->fixes->get( 'jsonld_home' ), 'nothing is applied' );
 	}
 
 	public function test_report_pending_is_not_cached(): void {
@@ -344,7 +618,7 @@ class RestTest extends RestTestCase {
 		$this->assertNull( $this->store->load() );
 		$this->assertSame( $fixes_before, $this->options['genready_fix_robots'] );
 		$this->assertSame( 'tok12345678', $this->options['genready_meta'], 'the verification tag stays' );
-		$this->assertSame( array( 'other' => 1 ), $this->options['genready_settings'] );
+		$this->assertSame( array( 'last_report_id' => self::REPORT_ID, 'other' => 1 ), $this->options['genready_settings'], 'the recent scans stay' );
 		$this->assertSame( array(), $this->transients );
 		$this->assertSame( array(), $this->client->forms, 'an API key connection needs no revoke call' );
 	}

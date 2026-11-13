@@ -7,6 +7,8 @@ test('connect with OAuth: sign in, approve, back on the plugin page connected', 
 	await openConnectForm(page);
 	// The admin email goes to GenReady only when the admin ticks the box.
 	await expect(page.locator('#genready-send-email')).not.toBeChecked();
+	const tools = await helper(page);
+	await tools.resetHttpLog();
 	const authorize = page.waitForRequest(/^http:\/\/127\.0\.0\.1:5002\/oauth\/authorize/);
 	await page.getByRole('button', { name: 'Connect to GenReady' }).click();
 	expect(new URL((await authorize).url()).searchParams.has('login_hint')).toBe(false);
@@ -29,7 +31,10 @@ test('connect with OAuth: sign in, approve, back on the plugin page connected', 
 	const setup = page.locator('#genready-setup');
 	await expect(setup.locator('[data-genready-step="verify"]')).toHaveText(VERIFY_SHOWN);
 	console.log(`verify step: ${await setup.locator('[data-genready-step="verify"]').innerText()}`);
-	await expect(setup.locator('[data-genready-step="scan"].genready-result--error')).toBeVisible();
+	// The blueprint stored a scan of this site, so the connection keeps it and starts no scan (Kris 2026-11-12).
+	await expect(page.locator('.genready-score')).toBeVisible();
+	await expect(setup.locator('[data-genready-step="scan"]')).toHaveCount(0);
+	expect((await tools.httpLog()).filter((entry) => entry.url.includes('/api/v1/analyze'))).toEqual([]);
 
 	await openGenReady(page, 'connection');
 	const table = page.locator('.genready-connection .form-table');

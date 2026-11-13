@@ -7,6 +7,7 @@
 
 namespace GenReady\Connection;
 
+use GenReady\Admin\RecentReports;
 use GenReady\Api\ApiError;
 use GenReady\Api\Client;
 use GenReady\Compat\Caches;
@@ -125,6 +126,7 @@ final class SiteSetup {
 		$settings['last_report_id']  = $report_id;
 		$settings['last_report_url'] = $target; // The JSON-LD fix target after the report cache expires.
 		update_option( self::SETTINGS, $settings, false );
+		( new RecentReports() )->add( $report_id, $target );
 		delete_transient( self::REPORT_CACHE );
 		$seconds = $result['estimatedSeconds'] ?? 0;
 		return array(

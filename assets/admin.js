@@ -33,7 +33,7 @@
 	var PLAN_CODES = [ 'PLAN_REQUIRED', 'DOMAIN_LIMIT_REACHED', 'CREDITS_EXHAUSTED' ];
 	var WRITE_CODES = [ 'CANNOT_WRITE', 'WRITE_FAILED' ];
 	var FILE_NAMES = { robots: 'robots.txt', llms: 'llms.txt' };
-	var CONNECTION_ACTIONS = [ 'connect', 'verify', 'scan', 'disconnect', 'remove-tag', 'check', 'create-account' ];
+	var CONNECTION_ACTIONS = [ 'connect', 'verify', 'scan', 'disconnect', 'remove-tag', 'add-tag', 'check', 'create-account' ];
 	var FIELD_LABELS = {
 		headline: __( 'Headline', 'genready' ),
 		name: __( 'Name', 'genready' ),
@@ -165,13 +165,43 @@
 		return button;
 	}
 
-	function showError( region, error ) {
+	/**
+	 * A link that checks another site on genready.ai. The site's own field
+	 * scans only this site. An http or https address goes into the link, so
+	 * genready.ai fills in its field.
+	 *
+	 * @param {string} [url] The address the admin entered.
+	 * @return {HTMLAnchorElement} The link.
+	 */
+	function otherSiteLink( url ) {
+		var href = typeof data.otherSiteUrl === 'string' && /^https?:\/\//.test( data.otherSiteUrl ) ? data.otherSiteUrl : 'https://genready.ai/';
+		var typed = typeof url === 'string' ? url.trim() : '';
+		if ( /^https?:\/\/[^\s]+$/i.test( typed ) ) {
+			href += '?url=' + encodeURIComponent( typed );
+		}
+		var link = make( 'a', null, __( 'Check another site on genready.ai', 'genready' ) );
+		link.href = href;
+		link.target = '_blank';
+		link.rel = 'noopener noreferrer';
+		return link;
+	}
+
+	/**
+	 * Show a failed call and the next step for its code.
+	 *
+	 * @param {HTMLElement} region Element with role="status".
+	 * @param {Object}      error  The apiFetch error.
+	 * @param {string}      [url]  The address of a refused scan.
+	 */
+	function showError( region, error, url ) {
 		var code = errorCode( error );
 		var extra = null;
 		if ( PLAN_CODES.indexOf( code ) !== -1 ) {
 			extra = plansLink();
 		} else if ( code === 'NOT_VERIFIED' ) {
 			extra = verifyButton( region );
+		} else if ( code === 'NOT_THIS_SITE' ) {
+			extra = otherSiteLink( url );
 		}
 		say( region, errorText( error ), 'error', extra );
 	}
@@ -313,27 +343,41 @@
 	/**
 	 * Ask GenReady to check the verification tag.
 	 *
-	 * @param {HTMLElement} region Where the result goes.
+	 * @param {HTMLElement} region    Where the result goes.
+	 * @param {Object}      [options] tag( on ): gets the tag state after the call, also after a failure.
+	 *                                verified(): runs when GenReady confirms the site.
+	 *                                success: the text for a verified site.
 	 * @return {Promise<boolean>} True when verified.
 	 */
-	async function verify( region ) {
+	async function verify( region, options ) {
+		var opts = options || {};
+		var tell = function ( on ) {
+			if ( typeof opts.tag === 'function' && typeof on === 'boolean' ) {
+				opts.tag( on );
+			}
+		};
 		say( region, __( 'Checking the verification tag on your home page…', 'genready' ), 'info' );
 		try {
 			var result = await call( 'POST', '/verify' );
+			tell( result ? result.tag_on : undefined );
 			if ( result && result.verified === true ) {
-				say( region, __( 'Your site is verified.', 'genready' ), 'success' );
+				if ( typeof opts.verified === 'function' ) {
+					opts.verified();
+				}
+				say( region, opts.success || __( 'Your site is verified.', 'genready' ), 'success' );
 				return true;
 			}
 			var retry = makeButton( __( 'Try again', 'genready' ) );
 			retry.addEventListener( 'click', function () {
 				busy( retry, function () {
-					return verify( region );
+					return verify( region, opts );
 				}, connectionButtons );
 			} );
 			var detail = result && typeof result.detail === 'string' && result.detail ? result.detail : __( 'GenReady did not find the verification tag on your home page.', 'genready' );
 			say( region, detail, 'warning', retry );
 			return false;
 		} catch ( error ) {
+			tell( error && error.data ? error.data.tag_on : undefined );
 			showError( region, error );
 			return false;
 		}
@@ -383,14 +427,25 @@
 			var result = await call( 'POST', '/scan', url ? { url: url } : null );
 			await poll( region, result && typeof result.scan_id === 'string' ? result.scan_id : '' );
 		} catch ( error ) {
-			showError( region, error );
+			showError( region, error, url );
 		}
 	}
 
-	/** After a connection: verify, then scan (a scan needs no verification). */
-	async function afterConnect() {
+	/**
+	 * After a connection: verify, then scan the home page (a scan needs no
+	 * verification). An account with earlier scans keeps them and scans nothing.
+	 *
+	 * @param {boolean} hasScans Whether this account has earlier scans of the site.
+	 * @param {boolean} reopen   Whether the page must load the Overview to show them.
+	 */
+	async function afterConnect( hasScans, reopen ) {
 		await verify( setupLine( 'verify' ) );
-		await scan( setupLine( 'scan' ), '' );
+		if ( ! hasScans ) {
+			await scan( setupLine( 'scan' ), '' );
+		} else if ( reopen ) {
+			// The Account tab shows the verification state after the reload.
+			window.location.assign( data.overviewUrl );
+		}
 	}
 
 	/* ---------- Connect ---------- */
@@ -433,10 +488,10 @@
 				var submit = form.querySelector( 'button[type="submit"]' );
 				busy( submit, async function () {
 					try {
-						await call( 'POST', '/connect/key', { key: input.value } );
+						var connected = await call( 'POST', '/connect/key', { key: input.value } );
 						input.value = '';
 						say( region, __( 'GenReady is connected.', 'genready' ), 'success' );
-						await afterConnect();
+						await afterConnect( !! ( connected && connected.has_scans === true ), true );
 					} catch ( error ) {
 						showError( region, error );
 					}
@@ -487,6 +542,20 @@
 		onAction( root, 'scan', function ( button ) {
 			return scan( setupLine( 'scan' ), button.getAttribute( 'data-genready-url' ) || '' );
 		}, connectionButtons );
+
+		// With a connection the page field scans with the key (1 API credit). Without one, onboarding.js runs the form.
+		var scanForm = document.getElementById( 'genready-scan-form' );
+		var scanResult = document.getElementById( 'genready-scan-result' );
+		if ( data.connected && scanForm && scanResult ) {
+			scanForm.addEventListener( 'submit', function ( event ) {
+				event.preventDefault();
+				var input = scanForm.querySelector( '[data-genready-input="url"]' );
+				var submit = scanForm.querySelector( '[data-genready-action="check"]' );
+				busy( submit, function () {
+					return scan( scanResult, input ? input.value.trim() : '' );
+				}, connectionButtons );
+			} );
+		}
 
 		var wait = root.querySelector( '[data-genready-screenshot-wait]' );
 		if ( wait ) {
@@ -691,14 +760,15 @@
 
 	/*
 	 * Card actions. Each gets the card context: card, kind, result (status
-	 * region), path (the REST path of the kind) and previewed (true while the
-	 * preview on screen is the one the server keeps for Apply).
+	 * region), path (the REST path of the kind), query (the shown report for
+	 * the JSON-LD fix, or '') and previewed (true while the preview on screen
+	 * is the one the server keeps for Apply).
 	 */
 
 	async function cardPreview( ctx ) {
 		ctx.previewed = false;
 		try {
-			var preview = await call( 'POST', ctx.path + 'preview', previewBody( ctx.card, ctx.kind ) );
+			var preview = await call( 'POST', ctx.path + 'preview' + ctx.query, previewBody( ctx.card, ctx.kind ) );
 			var ready = renderPreview( ctx.card, ctx.kind, preview );
 			ctx.previewed = ready;
 			say( ctx.result, ready ? __( 'Check the preview, then click Apply.', 'genready' ) : __( 'GenReady cannot apply this preview yet. Read the preview for the reason.', 'genready' ), ready ? 'info' : 'warning' );
@@ -717,7 +787,7 @@
 	 * @return {Promise<boolean>} True when Apply can go on.
 	 */
 	async function previewForApply( ctx ) {
-		var preview = await call( 'POST', ctx.path + 'preview', previewBody( ctx.card, ctx.kind ) );
+		var preview = await call( 'POST', ctx.path + 'preview' + ctx.query, previewBody( ctx.card, ctx.kind ) );
 		var ready = renderPreview( ctx.card, ctx.kind, preview );
 		if ( ! ready ) {
 			say( ctx.result, __( 'GenReady cannot apply this yet. Read the preview for the reason.', 'genready' ), 'warning' );
@@ -736,7 +806,7 @@
 			if ( ! ctx.previewed && ! ( await previewForApply( ctx ) ) ) {
 				return;
 			}
-			var answer = await call( 'POST', ctx.path + 'apply', ctx.kind === 'jsonld' ? { values: fillValues( ctx.card ) } : {} );
+			var answer = await call( 'POST', ctx.path + 'apply' + ctx.query, ctx.kind === 'jsonld' ? { values: fillValues( ctx.card ) } : {} );
 			ctx.previewed = false;
 			updateCard( ctx.card, answer.card );
 			field( ctx.card, 'preview' ).hidden = true;
@@ -766,7 +836,7 @@
 
 	async function cardUndo( ctx ) {
 		try {
-			var answer = await call( 'POST', ctx.path + 'undo' );
+			var answer = await call( 'POST', ctx.path + 'undo' + ctx.query );
 			ctx.previewed = false;
 			updateCard( ctx.card, answer.card );
 			field( ctx.card, 'preview' ).hidden = true;
@@ -789,8 +859,8 @@
 
 	async function cardAsFile( ctx ) {
 		try {
-			await call( 'POST', ctx.path + 'preview', previewBody( ctx.card, ctx.kind ) );
-			var answer = await call( 'POST', ctx.path + 'apply', { as_file: true } );
+			await call( 'POST', ctx.path + 'preview' + ctx.query, previewBody( ctx.card, ctx.kind ) );
+			var answer = await call( 'POST', ctx.path + 'apply' + ctx.query, { as_file: true } );
 			ctx.previewed = false;
 			updateCard( ctx.card, answer.card );
 			say( ctx.result, __( 'GenReady wrote llms.txt as a file. Check the live file in a minute.', 'genready' ), 'success' );
@@ -815,6 +885,8 @@
 			kind: kind,
 			result: field( card, 'result' ),
 			path: '/fixes/' + kind + '/',
+			// The JSON-LD fix works on the page of the report on screen.
+			query: kind === 'jsonld' && typeof data.openScan === 'string' && data.openScan ? '?scan=' + encodeURIComponent( data.openScan ) : '',
 			previewed: false,
 		};
 		// A changed summary or Content-Signal choice makes the preview on screen old.
@@ -844,13 +916,43 @@
 		}
 		var region = field( section, 'result' );
 
+		// Show the text and button for the tag state. A missing block (an old page) is skipped.
+		var showTag = function ( on ) {
+			var tagOn = field( section, 'tag-on' );
+			var tagOff = field( section, 'tag-off' );
+			if ( tagOn ) {
+				tagOn.hidden = ! on;
+			}
+			if ( tagOff ) {
+				tagOff.hidden = on;
+			}
+		};
+
+		// The table row says "Verified" and loses its Verify now button.
+		var markVerified = function () {
+			var cell = field( section, 'verified' );
+			if ( cell ) {
+				cell.textContent = __( 'Verified', 'genready' );
+			}
+		};
+
 		onAction( section, 'verify', function () {
-			return verify( region );
+			return verify( region, { tag: showTag, verified: markVerified } );
 		}, connectionButtons );
 
-		onAction( section, 'disconnect', async function () {
+		onAction( section, 'add-tag', function () {
+			return verify( region, {
+				tag: showTag,
+				verified: markVerified,
+				success: __( 'The verification tag is back on your home page, and your site is verified.', 'genready' ),
+			} );
+		}, connectionButtons );
+
+		onAction( section, 'disconnect', async function ( button ) {
+			// The page writes the text with the scans of the plan into the button.
+			var question = button.getAttribute( 'data-genready-confirm' ) || __( 'Disconnect GenReady? Applied fixes stay.', 'genready' );
 			// eslint-disable-next-line no-alert
-			if ( ! window.confirm( __( 'Disconnect GenReady? Applied fixes stay.', 'genready' ) ) ) {
+			if ( ! window.confirm( question ) ) {
 				return;
 			}
 			try {
@@ -862,11 +964,11 @@
 			}
 		}, connectionButtons );
 
-		onAction( section, 'remove-tag', async function ( button ) {
+		onAction( section, 'remove-tag', async function () {
 			try {
 				await call( 'POST', '/verification-tag/remove' );
-				button.hidden = true;
-				say( region, __( 'The verification tag is removed.', 'genready' ), 'success' );
+				showTag( false );
+				say( region, __( 'The verification tag is removed from your home page.', 'genready' ), 'success' );
 			} catch ( error ) {
 				showError( region, error );
 			}
@@ -881,6 +983,7 @@
 		makeButton: makeButton,
 		say: say,
 		showError: showError,
+		otherSiteLink: otherSiteLink,
 		errorCode: errorCode,
 		errorText: errorText,
 		busy: busy,
@@ -899,7 +1002,7 @@
 	if ( data.justConnected ) {
 		var starting = connectionButtons();
 		lock( starting );
-		afterConnect().finally( function () {
+		afterConnect( data.hasScans === true, false ).finally( function () {
 			unlock( starting );
 		} );
 	} else if ( data.reportState === 'pending' ) {

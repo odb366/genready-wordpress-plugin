@@ -28,9 +28,15 @@ if ( ! $connected ) :
 		<?php if ( $paused ) : ?>
 			<div class="notice notice-warning inline"><p><?php esc_html_e( 'GenReady paused free scans for now. Connect with a GenReady account.', 'genready' ); ?></p></div>
 		<?php endif; ?>
-		<p><?php esc_html_e( 'See how AI search engines and agents read your site, and apply fixes for robots.txt, llms.txt and structured data.', 'genready' ); ?></p>
+		<p><?php esc_html_e( 'See how AI search engines and agents read your site, and apply fixes for robots.txt, structured data and llms.txt.', 'genready' ); ?></p>
+		<p>
+			<?php
+			/* translators: %d: number of scans a month on the free plan. */
+			echo esc_html( sprintf( __( 'A free GenReady account includes %d scans a month for any page on this site.', 'genready' ), Page::FREE_SCANS ) );
+			?>
+		</p>
 		<p class="genready-consent">
-			<?php esc_html_e( "Connecting sends this site's address to genready.ai.", 'genready' ); ?>
+			<?php esc_html_e( "Connecting sends this site's address to genready.ai. The plugin then adds a verification tag to your home page. The tag proves that you own this site. Visitors do not see it.", 'genready' ); ?>
 			<?php echo Page::terms(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped in Page::terms(). ?>
 		</p>
 		<p>
@@ -62,6 +68,26 @@ endif;
 
 $method   = 'oauth' === ( $account['method'] ?? '' ) ? __( 'GenReady account (OAuth)', 'genready' ) : __( 'API key', 'genready' );
 $verified = $account['verified'] ?? null;
+$credits  = is_array( $account['credits'] ?? null ) ? $account['credits'] : null;
+$limit    = null !== $credits && is_int( $credits['limit'] ?? null ) ? $credits['limit'] : null;
+if ( null !== $limit ) {
+	/* translators: %d: number of scans a month on the site's GenReady plan. */
+	$lose = sprintf( __( 'Without a connection, the plugin cannot use the %d scans a month of your plan.', 'genready' ), $limit );
+} else {
+	$lose = __( 'Without a connection, the plugin cannot use the scans of your GenReady plan.', 'genready' );
+}
+$keep = __( 'Applied fixes stay. Your recent scans come back when you connect this account again.', 'genready' );
+// The scans left this month, or null when GenReady did not say.
+$credits_text = null;
+if ( null !== $credits && null === $limit ) {
+	$credits_text = __( 'No monthly limit', 'genready' );
+} elseif ( null !== $limit && is_int( $credits['remaining'] ?? null ) ) {
+	/* translators: 1: scans left this month, 2: scans a month on the plan. */
+	$credits_text = sprintf( __( '%1$d of %2$d left', 'genready' ), $credits['remaining'], $limit );
+} elseif ( null !== $limit ) {
+	/* translators: %d: scans a month on the plan. */
+	$credits_text = sprintf( __( '%d a month', 'genready' ), $limit );
+}
 ?>
 <section class="genready-card genready-connection" aria-labelledby="genready-connection-title">
 	<h2 id="genready-connection-title"><?php esc_html_e( 'Account', 'genready' ); ?></h2>
@@ -75,13 +101,19 @@ $verified = $account['verified'] ?? null;
 				<th scope="row"><?php esc_html_e( 'Plan', 'genready' ); ?></th>
 				<td><?php echo esc_html( is_string( $account['plan'] ?? null ) ? ucfirst( $account['plan'] ) : $unknown ); ?></td>
 			</tr>
+			<?php if ( null !== $credits_text ) : ?>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Scans this month', 'genready' ); ?></th>
+					<td data-genready-field="credits"><?php echo esc_html( $credits_text ); ?></td>
+				</tr>
+			<?php endif; ?>
 			<tr>
 				<th scope="row"><?php esc_html_e( 'Site name in GenReady', 'genready' ); ?></th>
 				<td><?php echo esc_html( is_string( $account['site_name'] ?? null ) && '' !== $account['site_name'] ? $account['site_name'] : ( is_string( $account['hostname'] ?? null ) ? $account['hostname'] : $unknown ) ); ?></td>
 			</tr>
 			<tr>
 				<th scope="row"><?php esc_html_e( 'Verification', 'genready' ); ?></th>
-				<td>
+				<td data-genready-field="verified">
 					<?php if ( true === $verified ) : ?>
 						<?php esc_html_e( 'Verified', 'genready' ); ?>
 					<?php else : ?>
@@ -94,9 +126,9 @@ $verified = $account['verified'] ?? null;
 	</table>
 
 	<p>
-		<button type="button" class="button" data-genready-action="disconnect"><?php esc_html_e( 'Disconnect', 'genready' ); ?></button>
-		<span class="description"><?php esc_html_e( 'Applied fixes stay after you disconnect.', 'genready' ); ?></span>
+		<button type="button" class="button" data-genready-action="disconnect" data-genready-confirm="<?php echo esc_attr( __( 'Disconnect GenReady?', 'genready' ) . ' ' . $lose . ' ' . $keep ); ?>"><?php esc_html_e( 'Disconnect', 'genready' ); ?></button>
 	</p>
+	<p class="description"><?php echo esc_html( $lose . ' ' . $keep ); ?></p>
 
 	<details class="genready-key-instead">
 		<summary><?php esc_html_e( 'Use an API key instead', 'genready' ); ?></summary>
@@ -104,12 +136,16 @@ $verified = $account['verified'] ?? null;
 	</details>
 
 	<h3><?php esc_html_e( 'Verification tag', 'genready' ); ?></h3>
-	<?php if ( $tag_on ) : ?>
-		<p><?php esc_html_e( 'Your home page shows the GenReady verification tag. It stays after you disconnect, so the site stays verified.', 'genready' ); ?></p>
+	<?php // Both states are on the page, so admin.js switches them without a reload. ?>
+	<div data-genready-field="tag-on"<?php echo $tag_on ? '' : ' hidden'; ?>>
+		<p><?php esc_html_e( 'Your home page has the GenReady verification tag. The tag proves that you own this site. It stays after you disconnect.', 'genready' ); ?></p>
+		<p><?php esc_html_e( 'GenReady checks the tag about once a week. Without the tag, the site loses its verified status.', 'genready' ); ?></p>
 		<p><button type="button" class="button" data-genready-action="remove-tag"><?php esc_html_e( 'Remove the verification tag', 'genready' ); ?></button></p>
-	<?php else : ?>
-		<p><?php esc_html_e( 'Your home page does not show the verification tag.', 'genready' ); ?></p>
-	<?php endif; ?>
+	</div>
+	<div data-genready-field="tag-off"<?php echo $tag_on ? ' hidden' : ''; ?>>
+		<p><?php esc_html_e( 'Your home page does not have the verification tag. GenReady needs the tag to keep the site verified.', 'genready' ); ?></p>
+		<p><button type="button" class="button" data-genready-action="add-tag"><?php esc_html_e( 'Add the verification tag', 'genready' ); ?></button></p>
+	</div>
 
 	<div class="genready-result" data-genready-field="result" role="status" aria-live="polite" tabindex="-1"></div>
 </section>

@@ -317,21 +317,76 @@
 	max-width: 32rem;
 }
 
-.genready-admin .genready-recent ul {
-	margin: 0;
+/* The recent scans: one row for each scan, the open scan marked. */
+.genready-admin .genready-recent__table {
+	border-collapse: collapse;
+	width: 100%;
 }
 
-.genready-admin .genready-recent li {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.75rem;
-	align-items: baseline;
+.genready-admin .genready-recent__table th {
+	border-bottom: 1px solid var(--genready-border);
+	color: var(--genready-muted);
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	padding: 0 12px 8px;
+	text-align: start;
+	text-transform: uppercase;
+}
+
+.genready-admin .genready-recent__table td {
+	border-bottom: 1px solid #f0f0f1;
+	border-inline-start: 3px solid transparent;
+	padding: 10px 12px;
+	vertical-align: middle;
+}
+
+.genready-admin .genready-recent__table td + td {
+	border-inline-start: 0;
+}
+
+.genready-admin .genready-recent__table tbody tr:last-child td {
+	border-bottom: 0;
+}
+
+.genready-admin .genready-recent__page {
+	overflow-wrap: anywhere;
+	width: 60%;
+}
+
+.genready-admin .genready-recent__row:hover td {
+	background: #f6f7f7;
+}
+
+.genready-admin .genready-recent__row.is-current td {
+	background: #f0f6fc;
+}
+
+.genready-admin .genready-recent__row.is-current td:first-child {
+	border-inline-start-color: #2271b1;
 }
 
 .genready-admin .genready-recent [aria-current="true"] {
 	font-weight: 600;
 }
 
+/* A score in a pill, in the colour of its band. */
+.genready-admin .genready-pill {
+	background: #fff;
+	background: color-mix(in srgb, currentColor 10%, #fff);
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	display: inline-block;
+	font-variant-numeric: tabular-nums;
+	font-weight: 600;
+	line-height: 1.6;
+	min-width: 2.25em;
+	padding: 0 8px;
+	text-align: center;
+}
+
+.genready-admin .genready-recent__band,
+.genready-admin .genready-recent__none,
 .genready-admin .genready-recent__date,
 .genready-admin .genready-aiview__url {
 	color: #50575e;

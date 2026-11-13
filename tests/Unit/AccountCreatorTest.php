@@ -3,6 +3,8 @@ namespace GenReady\Tests\Unit;
 
 use Brain\Monkey;
 use GenReady\Api\ApiError;
+use GenReady\Admin\RecentReports;
+use GenReady\Admin\Reports;
 use GenReady\Compat\Caches;
 use GenReady\Connection\TokenStore;
 use GenReady\Onboarding\AccountCreator;
@@ -143,12 +145,24 @@ class AccountCreatorTest extends TestCase {
 		$this->assertSame( self::ID1, $this->options['genready_settings']['last_report_id'] );
 	}
 
+	public function test_the_adopted_scans_stay_in_the_recent_list_with_their_scores(): void {
+		$this->scans->set_score( self::ID1, 64 );
+		$this->options[ RecentReports::OPTION ] = array( array( 'id' => '44444444-4444-4444-8444-444444444444', 'url' => 'https://example.com/old/', 'at' => 1, 'score' => 10 ) );
+		$this->client->public_result            = $this->success( array( self::ID1, self::ID2 ) );
+		$this->creator()->create( 'owner@example.com' );
+		$recent = ( new RecentReports() )->all();
+		$this->assertSame( array( self::ID2, self::ID1 ), array_column( $recent, 'id' ) );
+		$this->assertSame( array( 'https://example.com/pricing/', 'https://example.com/' ), array_column( $recent, 'url' ) );
+		$this->assertSame( 64, $recent[1]['score'] );
+	}
+
 	public function test_no_adopted_scan_leaves_no_last_report(): void {
 		$this->options['genready_settings'] = array( 'last_report_id' => '44444444-4444-4444-8444-444444444444', 'last_report_url' => 'https://example.com/old/' );
 		$this->client->public_result        = $this->success( array() );
 		$this->creator()->create( 'owner@example.com' );
 		$this->assertArrayNotHasKey( 'last_report_id', $this->options['genready_settings'] );
 		$this->assertArrayNotHasKey( 'last_report_url', $this->options['genready_settings'] );
+		$this->assertSame( self::DOMAIN, $this->options['genready_settings'][ Reports::OWNER ], 'the recent scans belong to the new account' );
 	}
 
 	public function test_the_proof_is_gone_after_an_error_and_after_an_exception(): void {
